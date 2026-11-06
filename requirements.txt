@@ -1,0 +1,56 @@
+# Raphael RedTeam — Unified Root Dependencies
+# Consolidates configs/, agent/, sword/, services requirements.
+
+# Core
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+httpx>=0.27.0
+pydantic>=2.0.0
+requests>=2.31.0
+pyyaml>=6.0
+dnspython>=2.6.0
+cryptography>=41.0.0
+jinja2>=3.1.0
+aiohttp>=3.9.0
+aiofiles
+python-multipart>=0.0.9
+python-dotenv
+
+# Async DB / infrastructure
+redis>=5.0.0
+fakeredis>=2.0.0
+neo4j>=5.0.0
+aiomysql
+asyncpg
+pymssql
+
+# Browser automation / research
+playwright>=1.40.0
+cloakbrowser
+
+# Anonymity / networking
+stem>=1.8.0
+aiodns
+urllib3
+
+# System / tooling
+psutil>=5.9.0
+paramiko
+pywinrm
+
+# Messaging / cloud (optional but installed)
+python-telegram-bot>=20.0
+boto3
+azure-storage-blob
+google-cloud-storage
+
+# Services
+duckduckgo-search
+r2pipe
+docker
+secretstorage
+packaging
+
+# Testing
+pytest>=8.0.0
+pytest-asyncio

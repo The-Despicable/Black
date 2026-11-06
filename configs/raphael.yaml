@@ -1,0 +1,70 @@
+# Raphael Black Hat Harness v3.1 — Unified Configuration Schema
+version: "3.1"
+
+# Target configuration
+target:
+  host: ""
+  port: 443
+  platform: auto          # windows|linux|macos|embedded|auto
+  architecture: auto      # x64|x86|arm64|arm|auto
+
+# Authorization and governance
+authorization:
+  engagement_id: ""
+  allowed_scopes: []
+  prohibited_targets: []
+  allowed_action_types: []
+  prohibited_action_types: []
+  allowed_capabilities: []
+  prohibited_capabilities: []
+  rate_limits:
+    max_actions_per_minute: 60
+    max_actions_per_hour: 1000
+    max_concurrent: 5
+  impact_budget:
+    max_impact_per_action: 5.0
+    max_cumulative_impact: 50.0
+    high_impact_requires_approval: true
+  time_window:
+    engagement_start: 0
+    engagement_end: 0
+
+# Capabilities
+capabilities:
+  kernel_rootkit: false
+  uefi_persistence: false
+  spi_flash_write: false
+  ai_evasion: false
+  zero_day_framework: false
+  domain_fronting_c2: false
+  dead_drop_c2: false
+  p2p_c2: false
+  cross_platform_implant: false
+
+# C2 configuration
+c2:
+  front_domain: ""
+  real_domain: ""
+  channel: domain_fronting    # domain_fronting|dead_drop|p2p|tor|cdn
+  implant_id: ""
+
+# Audit configuration
+audit:
+  log_path: "logs/harness_audit.jsonl"
+  cryptographic_chaining: true
+  remote_sink: null
+
+# Stealth configuration
+stealth:
+  ja3_spoofing: true
+  anti_forensics: true
+  memory_resident: true
+  kernel_operations: false
+  secure_delete_passes: 3
+  timestomp_reference: "kernel32.dll"
+  wipe_free_space: true
+
+# Deployment
+deployment:
+  native_only: true
+  docker: false

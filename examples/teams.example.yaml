@@ -1,0 +1,42 @@
+# Multi-team orchestration for `agora teams examples/teams.example.yaml`
+#
+# Each team has several models and its OWN task. After all teams finish:
+#   integration.mode: report  -> Integrator merges results directly
+#   integration.mode: debate  -> team leads debate each other's results
+#                                (judge scores them), then Integrator merges
+mission: "Decide how our startup should ship an AI feature in 6 weeks"
+
+teams:
+  research:
+    task: "Survey approaches, prior art, and failure modes for shipping this feature"
+    members:
+      - name: Scout
+        persona: researcher        # persona key (seeded genome)
+        provider: nvidia
+        model: meta/llama-3.3-70b-instruct
+      - name: Skeptic
+        persona: critic
+        provider: inferx
+        model: glm-5.3
+      - name: Synth
+        persona: analyst
+        provider: ollama-cloud
+        model: gpt-oss:120b
+        lead: true                 # synthesizes the TEAM RESULT
+
+  engineering:
+    task: "Design the staged rollout plan with checkpoints and rollback triggers"
+    members:
+      - name: Architect
+        persona: analyst
+        provider: ollama-cloud
+        model: deepseek-v3.1:671b
+        lead: true
+      - name: RedTeam
+        persona: critic
+        provider: nvidia
+        model: deepseek-ai/deepseek-r1
+
+integration:
+  mode: debate      # debate | report
+  rounds: 2         # cross-team debate rounds

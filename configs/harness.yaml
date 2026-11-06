@@ -1,0 +1,4 @@
+dry_run: true
+target_host: ""
+authorized_scopes: []
+audit_log: logs/harness_audit.jsonl
