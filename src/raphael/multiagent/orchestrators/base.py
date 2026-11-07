@@ -78,6 +78,7 @@ class SessionRunner:
             "event": "session_start", "session_id": self.session_id,
             "kind": kind, "topic": topic, "mode": cfg.mode,
         })
+        self._last_turn_latency_ms: int = 0
 
     # -------------------------------------------------------- governance
     def gate(self, action: str, **context: object) -> None:
@@ -110,8 +111,14 @@ class SessionRunner:
         team: Optional[str] = None,
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
+        emit_event: bool = True,
     ) -> str:
-        """Execute one agent turn: stream it, record it in the journal."""
+        """Execute one agent turn: stream it, record it in the journal.
+
+        Set ``emit_event=False`` when the caller post-processes the text
+        (e.g. adding debate headings) and wants to emit the NDJSON event
+        itself with the final text.
+        """
         self.turn_seq += 1
         meta = f"{model} · {provider_name}"
         t0 = time.time()
@@ -140,19 +147,22 @@ class SessionRunner:
             })
             text = "(turn failed)"
         latency = round((time.time() - t0) * 1000, 1)
-        emit_event({
-            "session_id": self.session_id,
-            "agent": agent,
-            "role": role,
-            "team": team,
-            "phase": phase,
-            "round": round_no,
-            "provider": provider_name,
-            "model": model,
-            "latency_ms": latency,
-            "ok": bool(ok_flag),
-            "text": text,
-        })
+        self._last_turn_latency_ms = latency
+        if emit_event:
+            from raphael.multiagent.orchestrators.base import emit_event as _emit_event
+            _emit_event({
+                "session_id": self.session_id,
+                "agent": agent,
+                "role": role,
+                "team": team,
+                "phase": phase,
+                "round": round_no,
+                "provider": provider_name,
+                "model": model,
+                "latency_ms": latency,
+                "ok": bool(ok_flag),
+                "text": text,
+            })
         self.db.execute(
             "INSERT INTO turns(session_id, seq, agent, team, role, phase, round, provider, model,"
             " content, latency_ms, ok, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",

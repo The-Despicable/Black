@@ -123,14 +123,58 @@ class MockProvider(Provider):
     def _debater(self, persona, stance, topic, messages):
         stance = stance or ("pro" if persona == "pro" else "con")
         favorable = stance.lower() in ("pro", "for", "in favor")
+        user_text = _last_user_text(messages)
         turn_no = len([m for m in messages if m.role == "assistant"]) + 1
         opponent_turn = ""
         for m in reversed(messages):
             if m.role == "assistant":
                 opponent_turn = m.content
                 break
-        # never reuse argument labels already on the table (keeps sides distinct)
-        context = _last_user_text(messages) + "\n" + opponent_turn
+
+        # ---- structured debate path: thinking block ----------------------
+        if "Reply with ONLY the thinking block" in user_text:
+            args = self._pick_args(3, set())
+            sign = "strengthens" if favorable else "undermines"
+            parts = ["### Framework"]
+            parts.append(f"The question turns on whether the benefits are durable and the risks governable — applied to '{topic}'.")
+            parts.append("\n### Key Arguments")
+            for i, (label, body) in enumerate(args, 1):
+                parts.append(f"{i}) {label}: {body}. Applied to '{topic}', this {sign} the motion.")
+            parts.append("\n### Rebuttal Targets")
+            parts.append("Neutralize the opponent's strongest framing by showing it ignores reversibility and second-order effects.")
+            parts.append("\n### Closing Points")
+            parts.append("Defend the strongest two arguments and the framework; concede nothing silently.")
+            return "\n".join(parts)
+
+        # ---- structured debate path: headed speech -----------------------
+        if "Structure your speech with these exact headings" in user_text:
+            is_closing = "FINAL round" in user_text or "closing statement" in user_text.lower()
+            is_opening = "opening statement" in user_text.lower()
+            args = self._pick_args(3 if turn_no == 1 else 2, set())
+            sign = "strengthens" if favorable else "undermines"
+            parts = []
+            if is_opening:
+                parts.append("### Framework")
+            elif is_closing:
+                parts.append("### Framework")
+            else:
+                parts.append("### Framework")
+            parts.append(f"The question turns on whether the benefits are durable and the risks governable — applied to '{topic}', this {sign} the motion.")
+            parts.append("\n### Arguments")
+            for i, (label, body) in enumerate(args, 1):
+                parts.append(f"{i}) {label}: {body}. Applied to '{topic}', this {sign} the motion.")
+            parts.append("\n### Rebuttal")
+            if opponent_turn:
+                parts.append(f"Opponent's claim — '{opponent_turn[:100]}.' — overstates certainty and ignores mitigation.")
+            else:
+                parts.append("No opposing points on the table yet; pre-empt the risk framing by showing mitigation exists.")
+            parts.append("\n### Closing")
+            parts.append("The two points that survived attack: " + "; ".join(f"the {label} argument" for label, _ in args[:2]) + ".")
+            parts.append("On balance, the case stands.")
+            return " ".join(parts)
+
+        # ---- legacy canned path (fallback) -------------------------------
+        context = user_text + "\n" + opponent_turn
         used = {k for k, _ in ARGUMENT_BANK if k in context}
         args = self._pick_args(3 if turn_no == 1 else 2, used)
         sign = "strengthens" if favorable else "undermines"
@@ -141,7 +185,7 @@ class MockProvider(Provider):
             for i, (label, body) in enumerate(args, 1):
                 parts.append(f"{i}) The {label} argument: {body}. Applied to '{topic}', this {sign} the motion.")
             parts.append("I hold the burden of showing these points survive rebuttal, and I will.")
-        elif "closing" in _last_user_text(messages).lower() or turn_no > 3:
+        elif "closing" in user_text.lower() or turn_no > 3:
             parts.append(f"Closing for the {'affirmative' if favorable else 'negative'} on '{topic}'.")
             parts.append("The two points that survived attack: " + "; ".join(f"the {label} argument" for label, _ in args[:2]) + ".")
             parts.append(f"My opponent's strongest move was invoking risk, but it assumed away mitigation entirely; the clash therefore resolves on {args[0][0]}.")
@@ -177,19 +221,45 @@ class MockProvider(Provider):
                 ],
             }
             return "```json\n" + json.dumps(verdict, indent=2) + "\n```"
-        pro_score = round(7.5 + (len(transcript) % 3) * 0.3, 1)
-        con_score = round(7.0 + (len(transcript) % 4) * 0.3, 1)
-        winner = "pro" if pro_score >= con_score else "con"
+
+        # Extract one signature line from each side for the reasoning.
+        # Transcript format: "[PRO · round N]\n<speech text>"
+        pro_quote = "structured opening"
+        con_quote = "structured rebuttal"
+        current_agent = None
+        for line in transcript.split("\n"):
+            m = re.match(r"\[(PRO|CON) · round \d+\]", line)
+            if m:
+                current_agent = m.group(1)
+                continue
+            if current_agent == "PRO" and line.strip() and not line.startswith("###") and not line.startswith("##"):
+                pro_quote = line.strip()[:90]
+                current_agent = None
+            elif current_agent == "CON" and line.strip() and not line.startswith("###") and not line.startswith("##"):
+                con_quote = line.strip()[:90]
+                current_agent = None
+
+        # Deterministic but varied scoring based on transcript content.
+        pro_len = 1 if pro_quote != "structured opening" else 0
+        con_len = 1 if con_quote != "structured rebuttal" else 0
+        pro_score = round(7.0 + min(pro_len * 0.4, 2.0), 1)
+        con_score = round(7.0 + min(con_len * 0.4, 2.0), 1)
         if abs(pro_score - con_score) < 0.3:
             winner = "tie"
+        else:
+            winner = "pro" if pro_score > con_score else "con"
+
         verdict = {
             "winner": winner,
             "scores": {"pro": pro_score, "con": con_score},
-            "reasoning": f"Both sides engaged the motion on '{topic}'. The affirmative built a cleaner causal chain; "
-                         f"the negative won on risk framing but under-argued the transition path.",
+            "reasoning": (
+                f"PRO opened with: \"{pro_quote}...\" CON answered with: \"{con_quote}...\". "
+                f"The side that grounded claims in the transcript's structure and answered the "
+                f"opponent's specific points took the decision."
+            ),
             "key_moments": [
-                "PRO's framing of the efficiency argument set the terms of the debate.",
-                "CON's rebuttal on auditability landed but arrived a round late.",
+                f"PRO's framing — '{pro_quote[:70]}...'",
+                f"CON's rebuttal — '{con_quote[:70]}...'",
             ],
         }
         return "```json\n" + json.dumps(verdict, indent=2) + "\n```"
