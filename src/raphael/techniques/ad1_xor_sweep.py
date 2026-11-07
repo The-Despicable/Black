@@ -5,9 +5,17 @@ Decrypts the entire AD1 image with key [0x23, 0x12, 0x2e, 0x3a]
 and finds all clean HTB{...} flags.
 Output: JSON lines to stdout.
 """
-import json, re, sys, time
+import json, os, re, sys, time
+from pathlib import Path
 
-AD1_PATH = "/home/yaser/raphael-2.0/challenge_1245/invisible-theft.ad1"
+# Repo-relative default with an env override. The previous value was an
+# absolute path into the author's machine; challenge_1245 is engagement
+# data and is not committed.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+AD1_PATH = os.environ.get(
+    "AD1_PATH",
+    str(_REPO_ROOT / "challenge_1245" / "invisible-theft.ad1"),
+)
 XOR_KEY = bytes([0x23, 0x12, 0x2e, 0x3a])
 
 
@@ -31,7 +39,16 @@ def is_clean_flag(flag_str: str) -> bool:
 def main():
     start = time.time()
     print(json.dumps({"event": "start", "path": AD1_PATH, "key": list(XOR_KEY)}))
-    
+
+    if not os.path.isfile(AD1_PATH):
+        print(json.dumps({
+            "event": "error",
+            "error": f"AD1 image not found: {AD1_PATH}",
+            "hint": "set AD1_PATH to the engagement image, or place it at "
+                    "challenge_1245/invisible-theft.ad1 in the checkout",
+        }))
+        return 2
+
     with open(AD1_PATH, "rb") as f:
         data = f.read()
     

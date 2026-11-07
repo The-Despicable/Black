@@ -17,8 +17,8 @@ challenge_1245/
 evaluations/
 # JUDGE report output
 scripts/judge_report.json
-# Ablation runner temp artifacts
-arena/
+# Ablation runner temp artifacts (root output dir only — src/arena/ is source)
+/arena/
 evaluations.zip
 
 # Runtime-generated artifacts (TUI / chat sessions)

@@ -8,11 +8,13 @@ import asyncio
 import json
 import sys
 import logging
+from pathlib import Path
 from typing import Any, Dict, Optional
 from dataclasses import dataclass, asdict
 
-# Import all Raphael modules
-sys.path.insert(0, "/home/yaser/raphael-2.0")
+# Import all Raphael modules. Repo-relative: this file lives at
+# src/bridge/raphael_bridge.py, so src/ is parents[1].
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from orchestrator.modes import autonomous, community, debate, deep_research, scan, student
 from orchestrator.agents import recon, exploit, postex, engage

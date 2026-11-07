@@ -9,6 +9,7 @@ import tempfile
 import uuid
 
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI
@@ -17,7 +18,10 @@ from pydantic import BaseModel
 
 from .case_api import router as case_router
 
-sys.path.insert(0, "/home/yaser/raphael-2.0/raphael")
+# Repo-relative import root: this file lives at src/recon-pipeline/main.py,
+# so src/ is parents[1]. The previous hardcoded /home/yaser/... path only
+# resolved on the original author's machine.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from orchestrator.scanners.nmap_scanner import NmapScanner
 from orchestrator.scanners.nuclei_scanner import NucleiScanner

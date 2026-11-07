@@ -11,7 +11,10 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-sys.path.insert(0, '/home/yaser/live/Raphael_RedTeam')
+# Repo-relative layout: this file lives at scripts/d6b_runner_fixed.py, so
+# the checkout root is parents[1] and the importable packages live under src/.
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'src'))
 
 from arena.d6_manifest import (
     get_d6_scenario, VALIDATION_SEEDS, SCENARIO_TEMPLATES,
@@ -35,11 +38,11 @@ from arena.ablation import (
 from arena.templates.base import ScenarioTemplate, ScenarioSplit
 from arena.d6_manifest import D6_SCENARIO_FACTORIES, SCENARIO_TEMPLATES, VALIDATION_SEEDS
 
-OUTPUT_DIR = Path('/home/yaser/live/Raphael_RedTeam/arena/d6b_results')
+OUTPUT_DIR = ROOT / 'arena' / 'd6b_results'
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-RESULTS_FILE = Path('/home/yaser/live/Raphael_RedTeam/arena/d6b_results/d6b_results.jsonl')
-PROGRESS_FILE = Path('/home/yaser/live/Raphael_RedTeam/arena/d6b_results/d6b_progress.json')
+RESULTS_FILE = OUTPUT_DIR / 'd6b_results.jsonl'
+PROGRESS_FILE = OUTPUT_DIR / 'd6b_progress.json'
 
 # D-6 Template adapter
 class D6Template:
@@ -222,7 +225,7 @@ for i, (run_key, arch_name, template_key, seed) in enumerate(runs):
         
     except Exception as e:
         print(f"  FAILED: {arch_name} {scenario_id} seed={seed} - {e}")
-        with open('/home/yaser/live/Raphael_RedTeam/arena/d6b_results/d6b_failed.jsonl', 'a') as f:
+        with open(OUTPUT_DIR / 'd6b_failed.jsonl', 'a') as f:
             f.write(json.dumps({'run': f"{arch_name}|{scenario_id}|{seed}", 'error': str(e)}) + '\n')
     
     if len(completed) % 10 == 0:

@@ -29,7 +29,10 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-sys.path.insert(0, '/home/yaser/live/Raphael_RedTeam')
+# Repo-relative layout: this file lives at scripts/d6b_runner.py, so the
+# checkout root is parents[1] and the importable packages live under src/.
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'src'))
 
 from arena.d6_manifest import (
     D6_SCENARIO_FACTORIES, D6_SCENARIO_EVALUATORS,
@@ -45,7 +48,7 @@ from arena.runner import evaluate_scenario
 _GLOBAL_EVALUATORS.update(D6_SCENARIO_EVALUATORS)
 
 # ── Paths ───────────────────────────────────────────────────────────
-OUTPUT_DIR = Path('/home/yaser/live/Raphael_RedTeam/arena/d6b_results')
+OUTPUT_DIR = ROOT / 'arena' / 'd6b_results'
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 RESULTS_FILE = OUTPUT_DIR / 'd6b_r1_results.jsonl'
@@ -56,13 +59,14 @@ def _file_hash(path):
     with open(path, 'rb') as f:
         return hashlib.sha256(f.read()).hexdigest()
 
+_ARENA = ROOT / 'src' / 'arena'
 ENGINE_HASHES = {
-    "ablation_runner": _file_hash('/home/yaser/live/Raphael_RedTeam/arena/ablation_runner.py'),
-    "ablation_runner_hash": _file_hash('/home/yaser/live/Raphael_RedTeam/arena/ablation_runner.py')[:16],
-    "d6b_runner": _file_hash('/home/yaser/live/Raphael_RedTeam/d6b_runner.py'),
-    "d6b_runner_hash": _file_hash('/home/yaser/live/Raphael_RedTeam/d6b_runner.py')[:16],
-    "ablation": _file_hash('/home/yaser/live/Raphael_RedTeam/arena/ablation.py'),
-    "d6_manifest": _file_hash('/home/yaser/live/Raphael_RedTeam/arena/d6_manifest.py'),
+    "ablation_runner": _file_hash(str(_ARENA / 'ablation_runner.py')),
+    "ablation_runner_hash": _file_hash(str(_ARENA / 'ablation_runner.py'))[:16],
+    "d6b_runner": _file_hash(str(Path(__file__).resolve())),
+    "d6b_runner_hash": _file_hash(str(Path(__file__).resolve()))[:16],
+    "ablation": _file_hash(str(_ARENA / 'ablation.py')),
+    "d6_manifest": _file_hash(str(_ARENA / 'd6_manifest.py')),
 }
 
 
