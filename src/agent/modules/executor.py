@@ -1,4 +1,6 @@
-import subprocess, asyncio
+import subprocess
+import asyncio
+
 
 class Executor:
     @staticmethod
@@ -6,8 +8,8 @@ class Executor:
         try:
             proc = await asyncio.create_subprocess_shell(
                 command,
-                stdout=asyncio.PIPE,
-                stderr=asyncio.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
             return {

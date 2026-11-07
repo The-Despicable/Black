@@ -15,6 +15,7 @@ Architecture:
 """
 
 import json
+import os
 import re
 import time
 import uuid
@@ -562,7 +563,7 @@ class AblationRunner:
                 model_id="deepseek-ai/deepseek-v4-flash",
                 provider="nvidia",
                 api_base="https://integrate.api.nvidia.com/v1",
-                api_key="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",
+                api_key=os.environ.get("NVIDIA_API_KEY", ""),
                 timeout_seconds=15,
                 temperature=0.0,
                 max_tokens=512,
@@ -759,7 +760,7 @@ class AblationRunner:
                     model_id="deepseek-ai/deepseek-v4-flash",
                     provider="nvidia",
                     api_base="https://integrate.api.nvidia.com/v1",
-                    api_key="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",
+                    api_key=os.environ.get("NVIDIA_API_KEY", ""),
                     timeout_seconds=15,
                     temperature=0.0,
                     max_tokens=512,

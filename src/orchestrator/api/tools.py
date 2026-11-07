@@ -129,6 +129,53 @@ TOOL_METADATA = [
         },
         requires_approval=True,
     ),
+    # Black Hat Harness tools
+    ToolInfo(
+        name="php2shell",
+        description="PHP2Shell polymorphic webshell implantation",
+        category="exploit",
+        parameters={
+            "url": {"type": "string", "description": "Target URL (e.g., http://target.com)"},
+            "upload_point": {"type": "string", "description": "File upload endpoint URL", "default": None},
+            "lfi_param": {"type": "string", "description": "LFI parameter name", "default": None},
+            "rfi_param": {"type": "string", "description": "RFI parameter name", "default": None},
+        },
+        requires_approval=True,
+    ),
+    ToolInfo(
+        name="ltad_exploit",
+        description="Live Target Adaptive Exploitation (LTAE)",
+        category="exploit",
+        parameters={
+            "target": {"type": "string", "description": "Target host"},
+            "port": {"type": "integer", "description": "Target port", "default": 443},
+            "probe_types": {"type": "array", "description": "Probe types: sqli, xss, cmd_injection, path_traversal", "default": ["sqli", "xss", "cmd_injection", "path_traversal"]},
+            "payload": {"type": "string", "description": "Probe payload", "default": "test_probe"},
+        },
+        requires_approval=True,
+    ),
+    ToolInfo(
+        name="memory_resident",
+        description="Memory-resident payload execution (Donut/PEzor)",
+        category="exploit",
+        parameters={
+            "target": {"type": "string", "description": "Target host"},
+            "port": {"type": "integer", "description": "Target port", "default": 443},
+            "binary_path": {"type": "string", "description": "Path to binary to convert to shellcode", "default": None},
+            "target_pid": {"type": "integer", "description": "Target PID for injection", "default": None},
+        },
+        requires_approval=True,
+    ),
+    ToolInfo(
+        name="php_filter_chain",
+        description="PHP filter chain exploitation (php://filter)",
+        category="exploit",
+        parameters={
+            "url": {"type": "string", "description": "Target URL"},
+            "lfi_param": {"type": "string", "description": "LFI parameter name", "default": "file"},
+        },
+        requires_approval=True,
+    ),
 ]
 
 
@@ -272,6 +319,11 @@ async def _execute_tool_by_name(tool_name: str, params: dict, execution_id: str)
         "metasploit": execute_metasploit,
         "crackmapexec": execute_crackmapexec,
         "chisel": execute_chisel,
+        # Black Hat Harness executors
+        "php2shell": execute_php2shell,
+        "ltad_exploit": execute_ltad_exploit,
+        "memory_resident": execute_memory_resident,
+        "php_filter_chain": execute_php_filter_chain,
     }
     
     executor = executors.get(tool_name)
@@ -328,3 +380,140 @@ async def cme_enum(
         persona=Persona.GHOST,
     )
     return await execute_tool("crackmapexec", req, auth)
+
+
+# ============================================================
+# Black Hat Harness Executors
+# ============================================================
+
+try:
+    from harness.black_hat_core import BlackHatHarness, BlackHatConfig
+    from harness.ltad_engine import LiveTargetEngine
+    from harness.php2shell import PHP2ShellExploiter
+    BH_API_AVAILABLE = True
+except ImportError:
+    BH_API_AVAILABLE = False
+
+
+async def execute_php2shell(params: dict, execution_id: str) -> dict:
+    """Execute PHP2Shell webshell implantation."""
+    if not BH_API_AVAILABLE:
+        return {"success": False, "stderr": "Black Hat Harness not available", "exit_code": -1, "duration": 0}
+    url = params.get("url", "")
+    if not url:
+        return {"success": False, "stderr": "url required", "exit_code": -1, "duration": 0}
+    try:
+        exploiter = PHP2ShellExploiter()
+        result = await exploiter.exploit(
+            url,
+            upload_point=params.get("upload_point"),
+            lfi_param=params.get("lfi_param"),
+            rfi_param=params.get("rfi_param"),
+        )
+        return {
+            "success": result.get("success", False),
+            "stdout": json.dumps(result) if result.get("success") else "",
+            "stderr": result.get("error", "") if not result.get("success") else "",
+            "exit_code": 0 if result.get("success") else 1,
+            "duration": 0,
+            "artifacts": [{"type": "php2shell_result", "data": result}],
+            "metadata": {"url": url, "method": result.get("method")},
+        }
+    except Exception as e:
+        return {"success": False, "stderr": str(e), "exit_code": -1, "duration": 0}
+
+
+async def execute_ltad_exploit(params: dict, execution_id: str) -> dict:
+    """Execute Live Target Adaptive Exploitation."""
+    if not BH_API_AVAILABLE:
+        return {"success": False, "stderr": "Black Hat Harness not available", "exit_code": -1, "duration": 0}
+    target = params.get("target", "")
+    if not target:
+        return {"success": False, "stderr": "target required", "exit_code": -1, "duration": 0}
+    try:
+        import json
+        port = int(params.get("port", 443))
+        probe_types = params.get("probe_types", ["sqli", "xss", "cmd_injection", "path_traversal"])
+        payload = params.get("payload", "test_probe")
+        engine = LiveTargetEngine()
+        t = await engine.initialize_live_target(target, port)
+        results = []
+        for pt in probe_types:
+            r = await engine.adaptive_probe(t, probe_type=pt, payload=payload)
+            results.append(r)
+        return {
+            "success": True,
+            "stdout": json.dumps(results),
+            "stderr": "",
+            "exit_code": 0,
+            "duration": 0,
+            "artifacts": [{"type": "ltad_result", "data": results}],
+            "metadata": {"target": target, "port": port, "probes": len(results)},
+        }
+    except Exception as e:
+        return {"success": False, "stderr": str(e), "exit_code": -1, "duration": 0}
+
+
+async def execute_memory_resident(params: dict, execution_id: str) -> dict:
+    """Execute memory-resident payload execution."""
+    if not BH_API_AVAILABLE:
+        return {"success": False, "stderr": "Black Hat Harness not available", "exit_code": -1, "duration": 0}
+    target = params.get("target", "")
+    if not target:
+        return {"success": False, "stderr": "target required", "exit_code": -1, "duration": 0}
+    try:
+        import json
+        config = BlackHatConfig(target_host=target, target_port=int(params.get("port", 443)))
+        harness = BlackHatHarness(config)
+        binary_path = params.get("binary_path")
+        target_pid = params.get("target_pid")
+        if binary_path:
+            result = await harness.execute_fileless(binary_path, target_pid=target_pid)
+        else:
+            result = await harness.memory_resident.prepare()
+        return {
+            "success": result.get("status") == "success",
+            "stdout": json.dumps(result),
+            "stderr": result.get("error", "") if result.get("status") != "success" else "",
+            "exit_code": 0 if result.get("status") == "success" else 1,
+            "duration": 0,
+            "artifacts": [{"type": "memory_resident_result", "data": result}],
+            "metadata": {"target": target},
+        }
+    except Exception as e:
+        return {"success": False, "stderr": str(e), "exit_code": -1, "duration": 0}
+
+
+async def execute_php_filter_chain(params: dict, execution_id: str) -> dict:
+    """Execute PHP filter chain exploitation."""
+    if not BH_API_AVAILABLE:
+        return {"success": False, "stderr": "Black Hat Harness not available", "exit_code": -1, "duration": 0}
+    url = params.get("url", "")
+    if not url:
+        return {"success": False, "stderr": "url required", "exit_code": -1, "duration": 0}
+    try:
+        import json
+        exploiter = PHP2ShellExploiter()
+        result = await exploiter.exploit(url, lfi_param=params.get("lfi_param", "file"))
+        return {
+            "success": result.get("success", False),
+            "stdout": json.dumps(result) if result.get("success") else "",
+            "stderr": result.get("error", "") if not result.get("success") else "",
+            "exit_code": 0 if result.get("success") else 1,
+            "duration": 0,
+            "artifacts": [{"type": "php_filter_chain_result", "data": result}],
+            "metadata": {"url": url, "method": result.get("method")},
+        }
+    except Exception as e:
+        return {"success": False, "stderr": str(e), "exit_code": -1, "duration": 0}
+
+
+# Wire Black Hat Harness executors into the ToolRegistry (avoids circular import)
+try:
+    from orchestrator.chains.tool_registry import registry as _tool_registry
+    _tool_registry.set_executor("php2shell", execute_php2shell)
+    _tool_registry.set_executor("ltad_exploit", execute_ltad_exploit)
+    _tool_registry.set_executor("memory_resident", execute_memory_resident)
+    _tool_registry.set_executor("php_filter_chain", execute_php_filter_chain)
+except ImportError:
+    pass

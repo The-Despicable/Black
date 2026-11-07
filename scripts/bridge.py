@@ -54,7 +54,9 @@ async def run_command(cmd: str) -> dict:
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            cwd="/home/yaser/raphael-2.0",
+            cwd=os.environ.get(
+                "RAPHAEL_REPO", str(Path(__file__).resolve().parent.parent)
+            ),
         )
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=300)
         stdout_str = stdout.decode("utf-8", errors="replace") if stdout else ""
@@ -124,7 +126,9 @@ async def wait_for_page_ready(page):
             if "chatgpt.com" in url and "login" not in url.lower():
                 if await page.query_selector("main, [contenteditable='true']"):
                     return True
-        except Exception:
+        except (asyncio.TimeoutError, Exception) as e:
+            import logging
+            logging.getLogger("bridge").debug(f"Page readiness check failed: {e}")
             pass
         await asyncio.sleep(1)
     print("[bridge] WARNING: page not ready after 90s")
@@ -287,7 +291,9 @@ async def post_to_chat(page, result_text: str):
                 if await send_btn.is_enabled():
                     await send_btn.click(force=True)
                     await asyncio.sleep(1)
-            except Exception:
+            except Exception as e:
+                import logging
+                logging.getLogger("bridge").debug(f"Send button click failed: {e}")
                 pass
 
         print(f"[bridge] Posted ({len(result_text)} chars)")
@@ -323,7 +329,7 @@ def write_inbox(text: str):
         if INBOX.stat().st_size > 2_000_000:
             content = INBOX.read_text().splitlines()
             INBOX.write_text("\n".join(content[-5000:]) + "\n")
-    except Exception as e:
+    except (FileNotFoundError, PermissionError, OSError) as e:
         print(f"[bridge] Inbox error: {e}")
 
 
@@ -335,7 +341,9 @@ def update_state(key: str, value):
         state[key] = value
         state["last_updated"] = timestamp()
         STATE.write_text(json.dumps(state, indent=2))
-    except Exception:
+    except (FileNotFoundError, PermissionError, OSError, json.JSONDecodeError) as e:
+        import logging
+        logging.getLogger("bridge").debug(f"State update failed: {e}")
         pass
 
 
@@ -363,7 +371,7 @@ async def main():
     INBOX.unlink(missing_ok=True)
     STATE.unlink(missing_ok=True)
 
-    USER_DATA_DIR = "/home/yaser/.playwright-chatgpt-profile"
+    USER_DATA_DIR = os.path.expanduser("~/.playwright-raphael-profile")
     os.makedirs(USER_DATA_DIR, exist_ok=True)
 
     async with async_playwright() as p:

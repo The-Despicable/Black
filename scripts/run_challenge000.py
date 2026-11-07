@@ -630,7 +630,7 @@ def main():
     outputs = generate_outputs(agent, agent.traces)
     
     # Save results
-    output_dir = Path("/home/yaser/raphael-2.0/evaluations/challenge000")
+    output_dir = Path("/home/yaser/live/Raphael_RedTeam/evaluations/challenge000")
     output_dir.mkdir(parents=True, exist_ok=True)
     
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")

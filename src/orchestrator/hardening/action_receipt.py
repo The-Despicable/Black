@@ -88,6 +88,7 @@ class ActionReceipt:
 
     # Authorization decision
     status: ActionProposalStatus = ActionProposalStatus.PROPOSED
+    state: str = ""              # String mirror of status lifecycle state (e.g., "proposed")
     decision: str = ""           # "allow" or "deny"
     reason: str = ""             # Human-readable explanation
     policy_version: str = ""     # Which policy version made this decision
@@ -105,6 +106,7 @@ class ActionReceipt:
 
     def __post_init__(self):
         """Validate transition invariant on construction."""
+        self.state = self.status.value
         if self.status == ActionProposalStatus.DENIED:
             # DENIED must not have execution fields set
             assert self.started_at == 0.0, "DENIED receipt cannot have started_at"
@@ -146,6 +148,7 @@ class ActionReceipt:
             "method": self.method,
             "impact_estimate": self.impact_estimate,
             "status": self.status.value,
+            "state": self.state,
             "decision": self.decision,
             "reason": self.reason,
             "policy_version": self.policy_version,
@@ -282,6 +285,7 @@ def timeout_execution(receipt: ActionReceipt, result: str = "") -> Optional[Acti
 def _update_hash(receipt: ActionReceipt) -> None:
     """Update audit_hash and chain, ensuring the previous hash is correct."""
     global _last_receipt_hash
+    receipt.state = receipt.status.value
     receipt.prev_hash = _last_receipt_hash
     receipt.audit_hash = receipt.compute_hash()
     _last_receipt_hash = receipt.audit_hash

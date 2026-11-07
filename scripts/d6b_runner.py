@@ -29,7 +29,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-sys.path.insert(0, '/home/yaser/raphael-2.0')
+sys.path.insert(0, '/home/yaser/live/Raphael_RedTeam')
 
 from arena.d6_manifest import (
     D6_SCENARIO_FACTORIES, D6_SCENARIO_EVALUATORS,
@@ -45,7 +45,7 @@ from arena.runner import evaluate_scenario
 _GLOBAL_EVALUATORS.update(D6_SCENARIO_EVALUATORS)
 
 # ── Paths ───────────────────────────────────────────────────────────
-OUTPUT_DIR = Path('/home/yaser/raphael-2.0/arena/d6b_results')
+OUTPUT_DIR = Path('/home/yaser/live/Raphael_RedTeam/arena/d6b_results')
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 RESULTS_FILE = OUTPUT_DIR / 'd6b_r1_results.jsonl'
@@ -57,12 +57,12 @@ def _file_hash(path):
         return hashlib.sha256(f.read()).hexdigest()
 
 ENGINE_HASHES = {
-    "ablation_runner": _file_hash('/home/yaser/raphael-2.0/arena/ablation_runner.py'),
-    "ablation_runner_hash": _file_hash('/home/yaser/raphael-2.0/arena/ablation_runner.py')[:16],
-    "d6b_runner": _file_hash('/home/yaser/raphael-2.0/d6b_runner.py'),
-    "d6b_runner_hash": _file_hash('/home/yaser/raphael-2.0/d6b_runner.py')[:16],
-    "ablation": _file_hash('/home/yaser/raphael-2.0/arena/ablation.py'),
-    "d6_manifest": _file_hash('/home/yaser/raphael-2.0/arena/d6_manifest.py'),
+    "ablation_runner": _file_hash('/home/yaser/live/Raphael_RedTeam/arena/ablation_runner.py'),
+    "ablation_runner_hash": _file_hash('/home/yaser/live/Raphael_RedTeam/arena/ablation_runner.py')[:16],
+    "d6b_runner": _file_hash('/home/yaser/live/Raphael_RedTeam/d6b_runner.py'),
+    "d6b_runner_hash": _file_hash('/home/yaser/live/Raphael_RedTeam/d6b_runner.py')[:16],
+    "ablation": _file_hash('/home/yaser/live/Raphael_RedTeam/arena/ablation.py'),
+    "d6_manifest": _file_hash('/home/yaser/live/Raphael_RedTeam/arena/d6_manifest.py'),
 }
 
 

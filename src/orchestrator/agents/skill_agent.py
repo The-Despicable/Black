@@ -17,15 +17,19 @@ class SkillAgent:
         if self._index_built:
             return
         all_skills = []
-        for sd in self.bridge.subdomain_index.values():
-            all_skills.extend(sd)
+        for skill_list in self.bridge.skills.values():
+            if isinstance(skill_list, list):
+                all_skills.extend(skill_list)
+            else:
+                all_skills.append(skill_list)
         if all_skills:
             self.indexer.build_index(all_skills)
         self._index_built = True
 
     def find_relevant_skills(self, query: str, top_k: int = 10) -> list[dict]:
         self._ensure_index()
-        return self.indexer.search(query, top_k=top_k)
+        results = self.indexer.search(query)
+        return results[:top_k]
 
     def execute_skill(self, skill_name: str, targets: list[str],
                       target_name: str = "", script: str = "agent.py") -> dict:
@@ -59,7 +63,8 @@ class SkillAgent:
 
     def debate_evidence(self, target: str, claim: str) -> list[dict]:
         self._ensure_index()
-        relevant = self.indexer.search(f"{target} {claim}", top_k=8)
+        relevant = self.indexer.search(f"{target} {claim}")
+        relevant = relevant[:8]
         evidence = []
         for s in relevant:
             skill_dir = Path(self.bridge.repo_path) / "skills" / s["name"] / "references"

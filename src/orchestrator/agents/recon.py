@@ -1,4 +1,4 @@
-import json, logging, time
+import asyncio, json, logging, time
 from typing import Optional
 
 from orchestrator.agents.base import (
@@ -7,6 +7,14 @@ from orchestrator.agents.base import (
 from orchestrator.agents.goal_tree import GoalValidator
 from orchestrator.events import EventBus, event_bus
 from orchestrator.providers import call_model, resolve_persona_override
+
+# CloakBrowser stealth browsing for web fingerprinting
+try:
+    from cloak_service.cloakbrowser import research_paper, get_random_viewport, get_random_user_agent
+    CLOAKBROWSER_AVAILABLE = True
+except ImportError:
+    CLOAKBROWSER_AVAILABLE = False
+    logger.warning("cloak_service.cloakbrowser not available — web fingerprinting via CloakBrowser disabled")
 
 logger = logging.getLogger("recon_agent")
 
@@ -59,6 +67,7 @@ class ReconAgent(BaseAgent):
             {"tool": "dns_enum", "args": {"target": task.target}},
             {"tool": "whois", "args": {"target": task.target}},
             {"tool": "web_fingerprint", "args": {"target": task.target}},
+            {"tool": "web_fingerprint_cloak", "args": {"target": task.target}},
             {"tool": "port_scan", "args": {"target": task.target, "ports": "1-1000"}},
             {"tool": "subdomain_scan", "args": {"target": task.target}},
             {"tool": "directory_scan", "args": {"target": task.target}},
@@ -90,6 +99,8 @@ class ReconAgent(BaseAgent):
                 findings = await self._run_port_scan(target, args.get("ports", "1-1000"))
             elif tool == "directory_scan":
                 findings = await self._run_directory_scan(target)
+            elif tool == "web_fingerprint_cloak":
+                findings = await self._run_web_fingerprint_via_cloak(target)
             else:
                 logger.warning(f"[recon] Unknown tool: {tool}")
         except Exception as e:
@@ -206,4 +217,28 @@ class ReconAgent(BaseAgent):
             logger.debug("Non-critical error", exc_info=True)
         return []
 
-ReconAgent.max_iterations = 6
+    async def _run_web_fingerprint_via_cloak(self, target: str) -> list[Finding]:
+        """Fingerprint web technologies via CloakBrowser stealth browsing."""
+        if not CLOAKBROWSER_AVAILABLE:
+            return []
+        findings = []
+        try:
+            # Research the target's web presence
+            results = await research_paper(
+                query=target,
+                sources=["github", "exploitdb"],
+                download_pdfs=False,
+                pdf_dir="./research_pdfs",
+            )
+            for r in results:
+                if r.get("title"):
+                    findings.append(Finding(
+                        agent=self.name, goal_type=GoalType.RECON,
+                        target=target, description=f"CloakBrowser research: {r['title']}",
+                        severity="info",
+                        evidence=str(r)[:500],
+                    ))
+        except Exception as e:
+            logger.debug(f"[recon] CloakBrowser fingerprint failed: {e}")
+        return findings
+

@@ -10,7 +10,12 @@ import re
 import time
 from typing import Optional
 
-import paramiko
+try:
+    import paramiko
+    PARAMIKO_AVAILABLE = True
+except ImportError:
+    paramiko = None  # type: ignore
+    PARAMIKO_AVAILABLE = False
 
 from .capability import (
     InteractiveShellCapability,

@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from collections import defaultdict, Counter
 
-sys.path.insert(0, '/home/yaser/raphael-2.0')
+sys.path.insert(0, '/home/yaser/live/Raphael_RedTeam')
 
 from arena.d6_manifest import (
     SCENARIO_TEMPLATES, HOLDOUT_SEEDS,
@@ -30,11 +30,11 @@ from arena.d6_manifest import (
 from arena.ablation import ABLATION_PRESETS
 
 
-OUTPUT_DIR = Path('/home/yaser/raphael-2.0/arena/d6c_results')
+OUTPUT_DIR = Path('/home/yaser/live/Raphael_RedTeam/arena/d6c_results')
 RESULTS_FILE = OUTPUT_DIR / 'd6c_holdout_results.jsonl'
 PROGRESS_FILE = OUTPUT_DIR / 'd6c_progress.json'
-MANIFESTS_DIR = Path('/home/yaser/raphael-2.0/arena/manifests')
-D6B_RESULTS_DIR = Path('/home/yaser/raphael-2.0/arena/d6b_results')
+MANIFESTS_DIR = Path('/home/yaser/live/Raphael_RedTeam/arena/manifests')
+D6B_RESULTS_DIR = Path('/home/yaser/live/Raphael_RedTeam/arena/d6b_results')
 
 EXPECTED_ARCHS = list(ABLATION_PRESETS.keys())
 EXPECTED_TOTAL = sum(len(HOLDOUT_SEEDS.get(tk, [])) for tk in SCENARIO_TEMPLATES) * len(EXPECTED_ARCHS)

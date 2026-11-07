@@ -50,9 +50,9 @@ sys.path.insert(0, str(SOURCEDIR))
 
 # Python version guard (SENTINEL Rule 50 - Run-Count Accountability)
 import sys
-if sys.version_info >= (3, 13):
+if sys.version_info >= (3, 15):
     raise RuntimeError(f"Unsupported Python {sys.version_info.major}.{sys.version_info.minor}. "
-                       f"Raphael requires Python >=3.11,<3.13. "
+                       f"Raphael requires Python >=3.11,<3.15. "
                        f"See pyproject.toml requires-python.")
 
 SKIP_DIRS = {

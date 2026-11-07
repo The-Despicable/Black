@@ -11,7 +11,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-sys.path.insert(0, '/home/yaser/raphael-2.0')
+sys.path.insert(0, '/home/yaser/live/Raphael_RedTeam')
 
 from arena.d6_manifest import (
     get_d6_scenario, VALIDATION_SEEDS, SCENARIO_TEMPLATES,
@@ -25,7 +25,6 @@ from orchestrator.brain.hypothesis import HypothesisManager
 from orchestrator.brain.contradiction import create_contradiction_manager
 from orchestrator.brain.capability_broker import CapabilityBroker
 from orchestrator.brain.action import Planner, ActionRegistry
-from orchestrator.brain.trust import TrustLevel
 
 from arena.ablation import (
     FULL_RAPHAEL, NO_HYPOTHESIS, NO_FALSIFICATION,
@@ -36,11 +35,11 @@ from arena.ablation import (
 from arena.templates.base import ScenarioTemplate, ScenarioSplit
 from arena.d6_manifest import D6_SCENARIO_FACTORIES, SCENARIO_TEMPLATES, VALIDATION_SEEDS
 
-OUTPUT_DIR = Path('/home/yaser/raphael-2.0/arena/d6b_results')
+OUTPUT_DIR = Path('/home/yaser/live/Raphael_RedTeam/arena/d6b_results')
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-RESULTS_FILE = Path('/home/yaser/raphael-2.0/arena/d6b_results/d6b_results.jsonl')
-PROGRESS_FILE = Path('/home/yaser/raphael-2.0/arena/d6b_results/d6b_progress.json')
+RESULTS_FILE = Path('/home/yaser/live/Raphael_RedTeam/arena/d6b_results/d6b_results.jsonl')
+PROGRESS_FILE = Path('/home/yaser/live/Raphael_RedTeam/arena/d6b_results/d6b_progress.json')
 
 # D-6 Template adapter
 class D6Template:
@@ -83,82 +82,6 @@ ARCH_CONFIGS = {
 
 ARCH_NAMES = list(ARCH_CONFIGS.keys())
 
-OUTPUT_DIR = Path('/home/yaser/raphael-2.0/arena/d6b_results')
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
-RESULTS_FILE = Path('/home/yaser/raphael-2.0/arena/d6b_results/d6b_results.jsonl')
-PROGRESS_FILE = Path('/home/yaser/raphael-2.0/arena/d6b_results/d6b_progress.json')
-
-def load_progress():
-    if PROGRESS_FILE.exists():
-        with open(PROGRESS_FILE, 'r') as f:
-            return json.load(f)
-    return {'completed': [], 'failed': []}
-
-def save_progress(progress):
-    with open(PROGRESS_FILE, 'w') as f:
-        json.dump(progress, f, indent=2)
-
-def append_result(result):
-    with open(RESULTS_FILE, 'a') as f:
-        f.write(json.dumps(result, default=str) + '\n')
-
-# Load progress
-progress = load_progress()
-completed = set(progress.get('completed', []))
-failed = progress.get('failed', [])
-
-# Build run list
-runs = []
-for template_key, template_info in SCENARIO_TEMPLATES.items():
-    scenario_id = template_info['id']
-    seeds = VALIDATION_SEEDS.get(template_key, [])
-    for seed in seeds:
-        for arch_name in ARCH_NAMES:
-            run_key = f"{arch_name}|{template_info['id']}|{seed}"
-            runs.append((run_key, arch_name, template_key, seed))
-
-print(f"Total runs to execute: {len(runs)}")
-print(f"Already completed: {len(completed)}")
-print(f"Remaining: {len(runs) - len(completed)}")
-
-# Filter out completed
-runs = [r for r in runs if f"{r[0]}|{SCENARIO_TEMPLATES[r[1]]['id']}|{r[2]}" not in completed]
-print(f"To execute: {len(runs)}")
-
-from arena.d6_manifest import get_d6_scenario, VALIDATION_SEEDS, SCENARIO_TEMPLATES, ITERATION_BUDGET, ACTION_BUDGET
-from arena.runner import evaluate_scenario, ArenaRunner
-from orchestrator.brain.evidence import EvidenceGraph, Evidence
-from orchestrator.brain.trust import TrustLevel
-from orchestrator.brain.world import WorldModel
-from orchestrator.brain.hypothesis import HypothesisManager
-from orchestrator.brain.contradiction import create_contradiction_manager
-from orchestrator.brain.capability_broker import CapabilityBroker
-from orchestrator.brain.action import Planner, ActionRegistry
-from orchestrator.brain.trust import TrustLevel
-
-from arena.ablation import (
-    FULL_RAPHAEL, NO_HYPOTHESIS, NO_FALSIFICATION,
-    NO_WORLD_MODEL, NO_PLANNER, NO_LLM, NO_DEFEATER,
-    SCRIPTED_BASELINE
-)
-
-ARCH_CONFIGS = {
-    'FULL_RAPHAEL':       (True,  True,  True,  True,  True,  True,  True),
-    'NO_HYPOTHESIS':      (False, True,  True,  True,  True,  True,  True),
-    'NO_FALSIFICATION':   (True,  False, True,  True,  True,  True,  False),
-    'NO_WORLD_MODEL':     (True,  True,  False, True,  True,  True,  True),
-    'NO_PLANNER':         (True,  True,  True,  False, True,  True,  True),
-    'NO_LLM':             (True,  True,  True,  True,  False, True,  True),
-    'NO_DEFEATER':        (True,  True,  True,  True,  True,  False, True),
-    'SCRIPTED_BASELINE':  (False, False, False, False, False, False, False),
-}
-
-ARCH_NAMES = list(ARCH_CONFIGS.keys())
-
-RESULTS_FILE = Path('/home/yaser/raphael-2.0/arena/d6b_results/d6b_results.jsonl')
-PROGRESS_FILE = Path('/home/yaser/raphael-2.0/arena/d6b_results/d6b_progress.json')
-
 def load_progress():
     if PROGRESS_FILE.exists():
         with open(PROGRESS_FILE, 'r') as f:
@@ -194,79 +117,6 @@ print(f"Remaining: {len(runs) - len(completed)}")
 
 # Filter out completed
 runs = [r for r in runs if r[0] not in completed]
-print(f"To execute: {len(runs)}")
-
-from arena.d6_manifest import get_d6_scenario, VALIDATION_SEEDS, SCENARIO_TEMPLATES, ITERATION_BUDGET, ACTION_BUDGET
-from arena.runner import evaluate_scenario, ArenaRunner
-from orchestrator.brain.evidence import EvidenceGraph, Evidence
-from orchestrator.brain.trust import TrustLevel
-from orchestrator.brain.world import WorldModel
-from orchestrator.brain.hypothesis import HypothesisManager
-from orchestrator.brain.contradiction import create_contradiction_manager
-from orchestrator.brain.capability_broker import CapabilityBroker
-from orchestrator.brain.action import Planner, ActionRegistry
-from orchestrator.brain.trust import TrustLevel
-
-from arena.ablation import (
-    FULL_RAPHAEL, NO_HYPOTHESIS, NO_FALSIFICATION,
-    NO_WORLD_MODEL, NO_PLANNER, NO_LLM, NO_DEFEATER,
-    SCRIPTED_BASELINE
-)
-
-ARCH_CONFIGS = {
-    'FULL_RAPHAEL':       (True,  True,  True,  True,  True,  True,  True),
-    'NO_HYPOTHESIS':      (False, True,  True,  True,  True,  True,  True),
-    'NO_FALSIFICATION':   (True,  False, True,  True,  True,  True,  False),
-    'NO_WORLD_MODEL':     (True,  True,  False, True,  True,  True,  True),
-    'NO_PLANNER':         (True,  True,  True,  False, True,  True,  True),
-    'NO_LLM':             (True,  True,  True,  True,  False, True,  True),
-    'NO_DEFEATER':        (True,  True,  True,  True,  True,  False, True),
-    'SCRIPTED_BASELINE':  (False, False, False, False, False, False, False),
-}
-
-ARCH_NAMES = list(ARCH_CONFIGS.keys())
-
-OUTPUT_DIR = Path('/home/yaser/raphael-2.0/arena/d6b_results')
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
-RESULTS_FILE = Path('/home/yaser/raphael-2.0/arena/d6b_results/d6b_results.jsonl')
-PROGRESS_FILE = Path('/home/yaser/raphael-2.0/arena/d6b_results/d6b_progress.json')
-
-def load_progress():
-    if PROGRESS_FILE.exists():
-        with open(PROGRESS_FILE, 'r') as f:
-            return json.load(f)
-    return {'completed': [], 'failed': []}
-
-def save_progress(progress):
-    with open(PROGRESS_FILE, 'w') as f:
-        json.dump(progress, f, indent=2)
-
-def append_result(result):
-    with open(RESULTS_FILE, 'a') as f:
-        f.write(json.dumps(result, default=str) + '\n')
-
-# Load progress
-progress = load_progress()
-completed = set(progress.get('completed', []))
-failed = progress.get('failed', [])
-
-# Build run list
-runs = []
-for template_key, template_info in SCENARIO_TEMPLATES.items():
-    scenario_id = template_info['id']
-    seeds = VALIDATION_SEEDS.get(template_key, [])
-    for seed in seeds:
-        for arch_name in ARCH_NAMES:
-            run_key = f"{arch_name}|{template_info['id']}|{seed}"
-            runs.append((run_key, arch_name, template_key, seed))
-
-print(f"Total runs to execute: {len(runs)}")
-print(f"Already completed: {len(completed)}")
-print(f"Remaining: {len(runs) - len(completed)}")
-
-# Filter out completed
-runs = [r for r in runs if f"{r[0]}|{SCENARIO_TEMPLATES[r[1]]['id']}|{r[2]}" not in completed]
 print(f"To execute: {len(runs)}")
 
 # Execute
@@ -372,7 +222,7 @@ for i, (run_key, arch_name, template_key, seed) in enumerate(runs):
         
     except Exception as e:
         print(f"  FAILED: {arch_name} {scenario_id} seed={seed} - {e}")
-        with open('/home/yaser/raphael-2.0/arena/d6b_results/d6b_failed.jsonl', 'a') as f:
+        with open('/home/yaser/live/Raphael_RedTeam/arena/d6b_results/d6b_failed.jsonl', 'a') as f:
             f.write(json.dumps({'run': f"{arch_name}|{scenario_id}|{seed}", 'error': str(e)}) + '\n')
     
     if len(completed) % 10 == 0:

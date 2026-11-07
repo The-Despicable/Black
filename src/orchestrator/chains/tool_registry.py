@@ -498,7 +498,34 @@ class ToolRegistry:
                 "description": "Fast TCP/UDP tunneling over HTTP/SOCKS5",
                 "category": "c2",
             },
+            # Black Hat Harness tools (executors wired in orchestrator.api.tools after module load)
+            "php2shell": {
+                "executor": None,
+                "description": "PHP2Shell polymorphic webshell implantation",
+                "category": "exploit",
+            },
+            "ltad_exploit": {
+                "executor": None,
+                "description": "Live Target Adaptive Exploitation (LTAE)",
+                "category": "exploit",
+            },
+            "memory_resident": {
+                "executor": None,
+                "description": "Memory-resident payload execution (Donut/PEzor)",
+                "category": "exploit",
+            },
+            "php_filter_chain": {
+                "executor": None,
+                "description": "PHP filter chain exploitation (php://filter)",
+                "category": "exploit",
+            },
         }
+
+    def set_executor(self, name: str, executor) -> None:
+        """Set the executor for a tool (used by api/tools.py to wire BH harness)."""
+        tool = self._tools.get(name)
+        if tool:
+            tool["executor"] = executor
     
     def get_tool(self, name: str) -> Optional[dict]:
         return self._tools.get(name)

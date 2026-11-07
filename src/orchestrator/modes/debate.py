@@ -2,7 +2,7 @@ from ..providers import call_model
 from ..agents.skill_agent import SkillAgent
 
 DEFAULT_ROUNDS = 3
-DEFAULT_MODELS = ["w12", "w13"]
+DEFAULT_MODELS = ["nvidia/nemotron-lightning", "beam"]
 
 _skill_agent = None
 

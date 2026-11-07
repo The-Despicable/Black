@@ -1,7 +1,7 @@
 from ..providers import call_model, call_parallel
 
-DEFAULT_MODELS = ["w12", "w13", "w480b", "m3"]
-MODEL_LABELS = {"w12": "WORMGPT-12", "w13": "WORMGPT-13", "w480b": "WORMGPT-480B", "m3": "MiniMax-M3"}
+DEFAULT_MODELS = ["nvidia/nemotron-lightning", "beam", "inferx/v4.1-basic"]
+MODEL_LABELS = {"nvidia/nemotron-lightning": "Nemotron Lightning (NVIDIA)", "beam": "Beam (Ollama)", "inferx/v4.1-basic": "V4.1 Basic (InferX)"}
 
 
 async def handle(question, rounds=2, temperature=0.85, models=None):

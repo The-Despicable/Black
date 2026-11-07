@@ -343,7 +343,7 @@ class SignalInNoiseTemplate(ScenarioTemplate):
                         "description": f"Correct vulnerable host identified ({vuln_host_ip})",
                         "type": "detection",
                         "required": True,
-                        "evidence_pattern": f"vuln-host|{vuln_host_ip.replace('.', '\\.')}.*vuln",
+                        "evidence_pattern": f"vuln-host|{vuln_host_ip.replace('.', '.')}.*.*vuln",
                     },
                     {
                         "description": f"CVE identified: {vuln['cve']}",
