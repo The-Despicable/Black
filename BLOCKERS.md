@@ -61,12 +61,12 @@ not read at runtime. Decision needed: keep (label as snapshot), `.gitignore`, or
 delete. Must be documented — currently noted in `AUDIT_REPORT.md` §2.6.
 Do not silently make it a runtime file.
 
-### B3 — cli / Python version metadata
-`pyproject.toml` has no `requires-python` (lint: `requires-python = ">=3.10"`).
-Confirm `pip install -e .` (editable) succeeds with `python >= 3.10` lower
-bound and that `raphael-ma version` reports `3.1.0`. The package depends on
-`src/cloak_service` which previously lacked `__init__.py` and was silently
-omitted from wheels — that marker was added in commit `a9161257`; verify.
+### B3 — cli / Python version metadata — RESOLVED
+`requires-python = ">=3.10"` and `textual>=1.0,<9` in the `multiagent` extra
+(1.0.0 floor and 8.2.8 both pass all 26 TUI tests on Python 3.12.16).
+`pip install -e '.[dev,multiagent]'` succeeds on a clean venv and
+`raphael-ma version` → `3.1.0`. `cloak_service` ships via the
+`__init__.py` added in `a9161257`.
 
 ### B4 — NDJSON purity re-check (click >= 8.2)
 `raphael-ma --json chat "..."` must emit **only** NDJSON to stdout; all
