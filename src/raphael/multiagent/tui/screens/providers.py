@@ -79,6 +79,13 @@ class ProvidersScreen(RaphaelScreen):
 
     # ------------------------------------------------------------------
     def _load_models(self) -> None:
+        # Toggling: a second press closes the list instead of refetching, so it
+        # never blocks the form below from being used.
+        picker = self.query_one("#model-list", OptionList)
+        if picker.display and picker.option_count:
+            picker.display = False
+            self.app.notify("model list closed", title="Providers")
+            return
         if not self._require_selection():
             return
         self.run_command(
@@ -98,8 +105,12 @@ class ProvidersScreen(RaphaelScreen):
         picker.clear_options()
         picker.add_options(self._live_models)
         picker.display = True
+        try:
+            picker.focus()
+        except Exception:
+            pass
         self.app.notify(
-            f"{row.get('provider', self._selected)}: {len(self._live_models)} live models — click one to fill the input",
+            f"{row.get('provider', self._selected)}: {len(self._live_models)} live models — click one; 'live models' closes the list",
             title="Providers",
         )
 
@@ -124,12 +135,15 @@ class ProvidersScreen(RaphaelScreen):
 
     def _after_bind(self, res) -> None:
         if res.ok:
+            self.app.notify("bound successfully", title="Providers")
             self.run_command(
                 ["providers", "list"],
                 json_mode=True,
                 label="providers list",
                 on_done=self._fill,
             )
+        else:
+            self.app.notify("bind failed", title="Providers", severity="error")
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         try:
@@ -137,6 +151,14 @@ class ProvidersScreen(RaphaelScreen):
         except Exception:
             return
         self.query_one("#model-id", Input).value = choice
+        picker = self.query_one("#model-list", OptionList)
+        picker.display = False
+        picker.clear_options()
+        self.app.notify(f"model → {choice}", title="Providers")
+        try:
+            self.query_one("#role", Input).focus()
+        except Exception:
+            pass
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         bid = event.button.id

@@ -217,6 +217,18 @@ class ChatScreen(RaphaelScreen):
 
     # ------------------------------------------------------- model picker
     def _load_models(self) -> None:
+        # Toggling: a second press on "live models" hides the picker instead
+        # of refetching, so it never blocks the conversation view.
+        picker = self.query_one("#chat-model-list", OptionList)
+        if picker.display and picker.option_count:
+            picker.display = False
+            self.app.notify("model list closed", title="Chat")
+            try:
+                self.query_one("#chat-msg", Input).focus()
+            except Exception:
+                pass
+            return
+
         provider = str(self._value("#chat-provider") or "").strip()
         if not provider:
             self.app.notify("Type a provider name first (nvidia, ollama-cloud, inferx).", title="Chat", severity="warning")
@@ -234,11 +246,20 @@ class ChatScreen(RaphaelScreen):
             self.app.notify("No live model list returned.", title="Chat", severity="warning")
             return
         self._live_models = [str(m) for m in row["models"]]
+        # auto-fill the provider input from the source provider of the list
+        # so the both-or-neither guard in _send can never trip after picking
+        listed_provider = str(row.get("provider") or provider).strip()
+        if not str(self._value("#chat-provider") or "").strip():
+            self.query_one("#chat-provider", Input).value = listed_provider
         picker = self.query_one("#chat-model-list", OptionList)
         picker.clear_options()
         picker.add_options(self._live_models)
         picker.display = True
-        self.app.notify(f"{len(self._live_models)} live models — click one to fill the model input", title="Chat")
+        try:
+            picker.focus()
+        except Exception:
+            pass
+        self.app.notify(f"{len(self._live_models)} live models — click one; Esc to close", title="Chat")
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         try:
@@ -246,6 +267,36 @@ class ChatScreen(RaphaelScreen):
         except Exception:
             return
         self.query_one("#chat-model", Input).value = choice
+        # close the overlay so it can no longer steal keystrokes/focus: this
+        # was the reason "models don't respond in chat mode" afterwards
+        try:
+            picker = self.query_one("#chat-model-list", OptionList)
+            picker.display = False
+            picker.clear_options()
+        except Exception:
+            pass
+        self.app.notify(f"model → {choice}", title="Chat")
+        try:
+            self.query_one("#chat-msg", Input).focus()
+        except Exception:
+            pass
+
+    def _after_bind(self, res) -> None:
+        if res.ok:
+            self.app.notify("chat default bound", title="Chat")
+            self.run_command(
+                ["providers", "list"],
+                json_mode=True,
+                label="provider catalog",
+                on_done=self._no_op,
+            )
+        else:
+            self.app.notify("bind failed", title="Chat", severity="error")
+            if getattr(res, "err", ""):
+                self.app.notify(str(res.err)[:120], title="providers", severity="error")
+
+    def _no_op(self, res) -> None:
+        pass
 
     def _bind(self) -> None:
         provider = str(self._value("#chat-provider") or "").strip()
@@ -257,10 +308,7 @@ class ChatScreen(RaphaelScreen):
             ["providers", "select", provider, "--model", model, "--role", "chat"],
             json_mode=True,
             label="bind chat default",
-            on_done=lambda res: self.app.notify(
-                "chat default bound" if res.ok else "bind failed", title="Chat",
-                severity=("information" if res.ok else "error"),
-            ),
+            on_done=self._after_bind,
         )
 
     # ------------------------------------------------------------ history
