@@ -209,6 +209,6 @@ class Phase0Audit:
 
 if __name__ == "__main__":
     import sys
-    audit = Phase0Audit("/home/yaser/live/Raphael_RedTeam")
+    audit = Phase0Audit(str(Path(__file__).resolve().parents[1]))
     success = audit.run_all()
     sys.exit(0 if success else 1)
