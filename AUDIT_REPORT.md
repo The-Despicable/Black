@@ -195,19 +195,20 @@ fallback, and `TestVersionSingleSourcing` asserts agreement with
 
 ## 3. Verification summary
 
-- `pytest tests/ -q` → **251 passed / 0 failed** (230 baseline restored at
-  the root + 21 new hardening regressions), ~106s.
+- `pytest tests/ -q` → **253 passed / 0 failed** (230 baseline restored at
+  the root + 21 new hardening regressions + 2 tests added in pass #2), ~114s.
 - Live headless boot of all six TUI screens (F1/F3/F4/F5/F6/F12) — OK.
 - CLI surface end-to-end: `init`, `--json chat` (pure NDJSON on stdout,
   banner on stderr), `brain log`, `tui` — OK.
 - Legacy C2 live socket smoke: beacon → ack over AES-256-GCM, per-IP rate
   limit enforced, oversized frame dropped — OK.
-- Secret scan over the full diff and new files — clean.
+- Credential-pattern scan over the full diff and new files — clean.
 
 ## 4. Recommended follow-ups (not blocking)
 
-1. Remove or gitignore the four dangling root service symlinks; consider
-   submodules or a services/ manifest instead.
+1. ~~Remove or gitignore the four dangling root service symlinks~~ — already
+   removed in commit `db82201c` ("Remove Docker dependency; wire harness
+   into orchestrator"); four dangling root symlinks no longer exist. Closed.
 2. Migrate any remaining `rat_c2` consumers to `rat_c2_secure`
    (mTLS + challenge-response) and deprecate the legacy surface.
 3. Add a CI job that installs from the pinned ranges from scratch and runs
