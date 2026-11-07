@@ -21,6 +21,6 @@ scripts/judge_report.json
 arena/
 evaluations.zip
 
-# Generated session transcripts and local brain state
+# Runtime-generated artifacts (TUI / chat sessions)
 transcripts/
 .raphael/
