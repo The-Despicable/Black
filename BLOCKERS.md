@@ -47,12 +47,13 @@ accidentally. Either delete, `.gitignore`, or commit deliberately.
 ## Blockers
 
 ### B1 — Full suite verdict (GREEN)
-**STATUS: GREEN — 253 passed / 0 failed** (run completed during authoring:
-`.venv/bin/python -m pytest tests/ -q` → 253 passed, 27 warnings, 114.06s,
-node 63754). Any failure glm observes must be treated as a regression
-introduced after commit `f70f11fc`; diagnose **without** reverting the
-import-path fixes (move the runtime path to `__file__`-relative or inject
-under test fixtures instead).
+**STATUS: GREEN — 260 passed / 0 failed** (run completed during authoring:
+`.venv/bin/python -m pytest -q` → 260 passed, 27 warnings, ~150s,
+bare `pytest` works after fixing `pytest.ini` `testpaths` list syntax).
+Any failure glm observes must be treated as a regression introduced after
+commit `bea93d29`; diagnose **without** reverting the import-path fixes
+(move the runtime path to `__file__`-relative or inject under test fixtures
+instead).
 
 ### B2 — configs/judge_report.json — RESOLVED (kept snapshot) (~260 frozen /home/yaser/… paths)
 `scripts/JUDGE.py` writes to `ROOT/judge_report.json` (root = `scripts/`),
@@ -166,5 +167,13 @@ template is not in the tree; no consumer code references it. Minor.
   avoid a self-referential false positive; glm can re-derive from
   `pyproject.toml`).
 - Untracked artifacts either deleted, gitignored, or tracked — none may ship.
+
+## Follow-ups completed after initial blocker resolution
+
+| # | Fix |
+|---|-----|
+| F1 | `pytest.ini`: `testpaths = ["tests"]` → `testpaths = tests` and `pythonpath = ["src"]` → `pythonpath = src`. Bare `pytest` now collects exactly `tests/` (260 passed) instead of erroring on `src/mcp-hub` / `src/raphael/integration`. |
+| F2 | `src/raphael/multiagent/llm/mock.py` `_judge`: quote extraction now skips the thinking block by tracking `---` separators, so the judge quotes actual speech lines instead of thinking-block Framework text. |
+| F3 | `.gitignore`: added `/build/` and `/dist/` build-output guards. |
 
 Authored by BlackBuilder. All code shipped on the branch pushed 2026-11-07.

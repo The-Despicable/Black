@@ -21,6 +21,10 @@ scripts/judge_report.json
 /arena/
 evaluations.zip
 
+# Python build outputs
+/build/
+/dist/
+
 # Runtime-generated artifacts (TUI / chat sessions)
 transcripts/
 .raphael/

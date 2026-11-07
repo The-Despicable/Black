@@ -233,20 +233,37 @@ class MockProvider(Provider):
             return "```json\n" + json.dumps(verdict, indent=2) + "\n```"
 
         # Extract one signature line from each side for the reasoning.
-        # Transcript format: "[PRO · round N]\n<speech text>"
-        # Skip headings, rules, and thinking-block noise to find real speech.
-        SKIP_PREFIXES = ("###", "##", "---")
+        # Transcript format per turn:
+        #   [PRO · round N]
+        #   ## PRO — Opening
+        #   ---                       <- separator 1 (end of top heading)
+        #   ### Thinking (deliberation)
+        #   ### Framework
+        #   The question turns...     <- thinking content (skip)
+        #   ...
+        #   ---                       <- separator 2 (end of thinking block)
+        #   Opening statement on...   <- speech content (capture this)
+        #   ### Framework
+        #   ...
+        SKIP_PREFIXES = ("###", "##")
         pro_quote = "structured opening"
         con_quote = "structured rebuttal"
         current_agent = None
+        separator_count = 0
         for line in transcript.split("\n"):
             stripped = line.strip()
             m = re.match(r"\[(PRO|CON) · round \d+\]", stripped)
             if m:
                 current_agent = m.group(1)
+                separator_count = 0
+                continue
+            if stripped == "---":
+                separator_count += 1
                 continue
             if not stripped or stripped.startswith(SKIP_PREFIXES):
                 continue
+            if separator_count < 2:
+                continue  # still in thinking block or top heading
             if current_agent == "PRO":
                 pro_quote = stripped[:90]
                 current_agent = None

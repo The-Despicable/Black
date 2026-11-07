@@ -195,8 +195,10 @@ fallback, and `TestVersionSingleSourcing` asserts agreement with
 
 ## 3. Verification summary
 
-- `pytest tests/ -q` → **253 passed / 0 failed** (230 baseline restored at
-  the root + 21 new hardening regressions + 2 tests added in pass #2), ~114s.
+- `pytest -q` → **260 passed / 0 failed** (230 baseline restored at
+  the root + 21 new hardening regressions + 7 debate improvement tests
+  + 2 tests added in pass #2), ~150s. Bare `pytest` collects exactly
+  `tests/` after fixing `testpaths` INI syntax.
 - Live headless boot of all six TUI screens (F1/F3/F4/F5/F6/F12) — OK.
 - CLI surface end-to-end: `init`, `--json chat` (pure NDJSON on stdout,
   banner on stderr), `brain log`, `tui` — OK.
