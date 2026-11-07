@@ -132,44 +132,54 @@ class MockProvider(Provider):
                 break
 
         # ---- structured debate path: thinking block ----------------------
+        # Deliberation: strategic plan, distinct headings from the speech.
         if "Reply with ONLY the thinking block" in user_text:
             args = self._pick_args(3, set())
             sign = "strengthens" if favorable else "undermines"
             parts = ["### Framework"]
-            parts.append(f"The question turns on whether the benefits are durable and the risks governable — applied to '{topic}'.")
-            parts.append("\n### Key Arguments")
+            parts.append(f"The question turns on whether the benefits are durable and the risks governable.")
+            parts.append("\n### Planned Arguments")
             for i, (label, body) in enumerate(args, 1):
-                parts.append(f"{i}) {label}: {body}. Applied to '{topic}', this {sign} the motion.")
-            parts.append("\n### Rebuttal Targets")
+                parts.append(f"{i}) {label}: {body}.")
+            parts.append("\n### Rebuttal Strategy")
             parts.append("Neutralize the opponent's strongest framing by showing it ignores reversibility and second-order effects.")
-            parts.append("\n### Closing Points")
+            parts.append("\n### Closing Focus")
             parts.append("Defend the strongest two arguments and the framework; concede nothing silently.")
             return "\n".join(parts)
 
         # ---- structured debate path: headed speech -----------------------
         if "Structure your speech with these exact headings" in user_text:
-            is_closing = "FINAL round" in user_text or "closing statement" in user_text.lower()
-            is_opening = "opening statement" in user_text.lower()
-            args = self._pick_args(3 if turn_no == 1 else 2, set())
+            # Detect phase from the prompt text, not from message count
+            # (history has no assistant messages, so counting them always = 1).
+            if "FINAL round" in user_text or "closing statement" in user_text.lower():
+                phase = "closing"
+            elif "opening statement" in user_text.lower():
+                phase = "opening"
+            else:
+                phase = "rebuttal"
+            args = self._pick_args(3 if phase == "opening" else 2, set())
             sign = "strengthens" if favorable else "undermines"
             parts = []
-            if is_opening:
-                parts.append("### Framework")
-            elif is_closing:
-                parts.append("### Framework")
+            if phase == "opening":
+                parts.append(f"Opening statement on '{topic}': I argue {'for' if favorable else 'against'} this motion.")
+            elif phase == "closing":
+                parts.append(f"Closing for the {'affirmative' if favorable else 'negative'} on '{topic}'.")
             else:
-                parts.append("### Framework")
+                parts.append(f"Rebuttal on '{topic}': I answer my opponent's strongest point and extend my case.")
+            parts.append("### Framework")
             parts.append(f"The question turns on whether the benefits are durable and the risks governable — applied to '{topic}', this {sign} the motion.")
             parts.append("\n### Arguments")
             for i, (label, body) in enumerate(args, 1):
-                parts.append(f"{i}) {label}: {body}. Applied to '{topic}', this {sign} the motion.")
+                parts.append(f"{i}) {label}: {body}.")
             parts.append("\n### Rebuttal")
-            if opponent_turn:
+            if opponent_turn and phase == "rebuttal":
                 parts.append(f"Opponent's claim — '{opponent_turn[:100]}.' — overstates certainty and ignores mitigation.")
-            else:
+            elif phase == "opening":
                 parts.append("No opposing points on the table yet; pre-empt the risk framing by showing mitigation exists.")
+            else:
+                parts.append("Their framing ignores reversibility; I show mitigation already exists within open release.")
             parts.append("\n### Closing")
-            parts.append("The two points that survived attack: " + "; ".join(f"the {label} argument" for label, _ in args[:2]) + ".")
+            parts.append("The two points that survive attack: " + "; ".join(f"the {label} argument" for label, _ in args[:2]) + ".")
             parts.append("On balance, the case stands.")
             return " ".join(parts)
 
@@ -224,19 +234,24 @@ class MockProvider(Provider):
 
         # Extract one signature line from each side for the reasoning.
         # Transcript format: "[PRO · round N]\n<speech text>"
+        # Skip headings, rules, and thinking-block noise to find real speech.
+        SKIP_PREFIXES = ("###", "##", "---")
         pro_quote = "structured opening"
         con_quote = "structured rebuttal"
         current_agent = None
         for line in transcript.split("\n"):
-            m = re.match(r"\[(PRO|CON) · round \d+\]", line)
+            stripped = line.strip()
+            m = re.match(r"\[(PRO|CON) · round \d+\]", stripped)
             if m:
                 current_agent = m.group(1)
                 continue
-            if current_agent == "PRO" and line.strip() and not line.startswith("###") and not line.startswith("##"):
-                pro_quote = line.strip()[:90]
+            if not stripped or stripped.startswith(SKIP_PREFIXES):
+                continue
+            if current_agent == "PRO":
+                pro_quote = stripped[:90]
                 current_agent = None
-            elif current_agent == "CON" and line.strip() and not line.startswith("###") and not line.startswith("##"):
-                con_quote = line.strip()[:90]
+            elif current_agent == "CON":
+                con_quote = stripped[:90]
                 current_agent = None
 
         # Deterministic but varied scoring based on transcript content.

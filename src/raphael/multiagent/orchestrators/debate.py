@@ -143,14 +143,19 @@ def _ensure_headings(text: str, is_opening: bool, is_closing: bool) -> str:
 def _format_turn(
     agent: str, side: str, round_no: int, total_rounds: int, text: str, thinking: Optional[str] = None
 ) -> str:
-    """Wrap a speech with a top-level heading and optional thinking section."""
+    """Wrap a speech with a top-level heading and optional thinking section.
+
+    The thinking block is set off with a horizontal rule so it reads as
+    private deliberation, distinct from the public speech below it.
+    """
     stage = "Opening" if round_no == 1 else ("Closing" if round_no == total_rounds else f"Round {round_no}")
     is_opening = round_no == 1
     is_closing = round_no == total_rounds
     body = _ensure_headings(text, is_opening, is_closing)
-    parts = [f"## {agent} — {stage}"]
+    parts = [f"## {agent} — {stage}", "---"]
     if thinking:
-        parts.append("\n### Thinking (deliberation)\n" + thinking.strip())
+        parts.append("### Thinking (deliberation)\n" + thinking.strip())
+        parts.append("---")
     parts.append("\n" + body)
     return "\n".join(parts)
 
