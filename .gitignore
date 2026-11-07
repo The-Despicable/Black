@@ -24,3 +24,12 @@ evaluations.zip
 # Runtime-generated artifacts (TUI / chat sessions)
 transcripts/
 .raphael/
+
+# Planning-era docs / audits not part of the released tree
+/AUDIT_REPORT_2026-11-03.md
+/AUDIT_SUMMARY.md
+/COMPLETE_BRAIN_PROMPT.md
+/IMPLEMENTATION_CHECKLIST.md
+/REMEDIATION_COMMANDS.md
+/WEB_UI_IMPLEMENTATION_SPEC.md
+/audit/

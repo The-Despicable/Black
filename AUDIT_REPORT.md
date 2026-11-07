@@ -174,6 +174,14 @@ harness into orchestrator") — nothing to fix there.
 Verified by: `TestPortability` (3) plus import smoke checks for every
 service module whose bootstrap path was changed.
 
+Additional landings in this reconciliation pass:
+- `scripts/run_help.sh` / `scripts/test_command.sh` — author-root `cd` replaced with
+  repo-relative + venv-python invocation.
+- B8 closure: `configs/hrm_service.conf` deleted (module absent, no consumer).
+- B7 closure: `.gitignore` strengthened so the residual planning artefacts
+  (including `AUDIT_REPORT_2026-11-03.md` fallback snapshot) never publish.
+
+
 ### 2.7 Version single-sourcing
 
 `raphael-ma` reported `0.3.0` while the package is `3.1.0`.
