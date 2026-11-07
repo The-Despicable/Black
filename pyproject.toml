@@ -16,12 +16,14 @@ raphael = "harness.black_hat_cli:main"
 raphael-ma = "raphael.multiagent.cli:app"
 
 [project.optional-dependencies]
-multiagent = ["typer>=0.12", "rich>=13.7", "pyyaml>=6.0", "requests>=2.28"]
-dev = ["pytest", "pytest-asyncio", "black", "flake8", "mypy"]
-research = ["cloakbrowser>=0.6.4", "playwright>=1.53"]
-kernel = ["pywin32", "wmi"]
-c2 = ["aiohttp[speedups]", "cryptography"]
-exploitation = ["capstone", "unicorn", "keystone-engine"]
+# PIN POLICY: validated lower bound + upper bound at next major
+# (next minor for 0.x). See root requirements.txt.
+multiagent = ["typer>=0.12,<1", "rich>=13.7,<15", "pyyaml>=6.0,<7", "requests>=2.28,<3"]
+dev = ["pytest>=8.0.0,<10", "pytest-asyncio>=0.23,<2", "black>=24,<26", "flake8>=7,<8", "mypy>=1.8,<2"]
+research = ["cloakbrowser>=0.6.4", "playwright>=1.40.0,<2"]
+kernel = ["pywin32>=306,<311", "wmi>=1.5,<2"]
+c2 = ["aiohttp[speedups]>=3.9.0,<4", "cryptography>=41.0.0,<45"]
+exploitation = ["capstone>=5,<6", "unicorn>=2,<3", "keystone-engine>=0.9,<1"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
