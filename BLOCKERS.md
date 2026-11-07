@@ -54,7 +54,7 @@ introduced after commit `f70f11fc`; diagnose **without** reverting the
 import-path fixes (move the runtime path to `__file__`-relative or inject
 under test fixtures instead).
 
-### B2 — configs/judge_report.json (~260 frozen /home/yaser/… paths)
+### B2 — configs/judge_report.json — RESOLVED (kept snapshot) (~260 frozen /home/yaser/… paths)
 `scripts/JUDGE.py` writes to `ROOT/judge_report.json` (root = `scripts/`),
 so `configs/judge_report.json` is a committed historical *snapshot* and is
 not read at runtime. Decision needed: keep (label as snapshot), `.gitignore`, or
@@ -68,7 +68,7 @@ Do not silently make it a runtime file.
 `raphael-ma version` → `3.1.0`. `cloak_service` ships via the
 `__init__.py` added in `a9161257`.
 
-### B4 — NDJSON purity re-check (click >= 8.2)
+### B4 — NDJSON purity — RESOLVED (click 8.5.1, 2 objects on stdout)
 `raphael-ma --json chat "..."` must emit **only** NDJSON to stdout; all
 diagnostics (banner, phase rules) on stderr. The passing implementation is in
 `tests/test_raphael_multiagent_chat.py::_separate_stream_runner`. Re-run:
@@ -77,7 +77,7 @@ diagnostics (banner, phase rules) on stderr. The passing implementation is in
 .venv/bin/python -m pytest tests/test_raphael_multiagent_chat.py tests/test_run_screens.py -q
 ```
 
-### B5 — Credential-pattern scan of the final diff
+### B5 — Credential-pattern scan — RESOLVED (only pin line)
 Run the standard credential-pattern scan over `git diff db82201c..HEAD`.
 The single expected dependency-pin hit is one specific package line in the
 requirement files (the key-store library pinned in three requirement files
@@ -86,17 +86,17 @@ are intentionally not spelled out in this tracker so that documentation
 text never trips the fingerprint scan. glm can re-derive the exact package value
 from `pyproject.toml` and the requirements files directly.
 
-### B6 — AUDIT_REPORT.md currency
+### B6 — AUDIT_REPORT.md currency — RESOLVED
 `AUDIT_REPORT.md` §2.6 amended for the extended portability work. If glm adds
 any commit touching tracked code, append a row to the finding matrix. Module
 version assertions live in `tests/test_c2_hardening.py`.
 
-### B7 — Untracked artifact disposition (see §non-shipped)
+### B7 — Untracked artifacts — RESOLVED (ignored)
 Make explicit decisions for each file above; none may ship by accident.
 Recommended: delete planning docs, gitignore `audit/`, keep `audit/` contents
 as a reference directory under `.gitignore`.
 
-### B8 — src/orchestrator/hrm_service.py does not exist
+### B8 — hrm_service phantom — RESOLVED (conf deleted)
 `configs/hrm_service.conf` is now labelled a template only (header comment).
 Either implement the module or delete the conf. The module referenced by the
 template is not in the tree; no consumer code references it. Minor.

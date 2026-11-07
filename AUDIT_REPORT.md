@@ -122,12 +122,6 @@ decision, not an accident of `pip install`.
 
 ### 2.6 Portability (author-machine paths removed)
 
-- `src/orchestrator/config/paths.py` / `target.py` — were
-  `sys.path.insert(0, "/home/yaser/raphael-2.0")` + `from config.* import *`,
-  which raised `ModuleNotFoundError` on any other machine (and silently
-  masked the fact that the package lives at the repo root as `configs`).
-  Now derived from `__file__` and importing `configs.*`.
-### 2.6 Portability (author-machine paths removed)
 
 - `src/orchestrator/config/paths.py` / `target.py` — were
   `sys.path.insert(0, "/home/yaser/raphael-2.0")` + `from config.* import *`,
@@ -155,11 +149,9 @@ decision, not an accident of `pip install`.
   recon agent already imported `cloak_service.cloakbrowser`, which worked
   from a source checkout as a namespace package but was dropped from a
   wheel.
-- `configs/hrm_service.conf`: replaced both hardcoded `/home/yaser/…`
-  paths with environment-driven expansion (`%(ENV_RAPHAEL_*)s`); the unit
-  was never runnable on another machine. The referenced
-  `orchestrator.hrm_service` module is not part of this checkout — the file
-  is retained as a template only, and is labelled as such.
+- `configs/hrm_service.conf`: deleted — `orchestrator.hrm_service` does
+  not exist in the tree and no code references it; it was a template only
+  (blocker B8 closed).
 - `configs/judge_report.json`: a historical machine-generated artifact
   retained as evidence. Its embedded `/home/yaser/…` evidence paths are
   frozen snapshots of where results lived when they were produced; nothing
