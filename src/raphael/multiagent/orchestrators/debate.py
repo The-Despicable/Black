@@ -188,4 +188,8 @@ def run_debate(
 
     tick_evolution_counters(db)
     runner.close()
-    return verdict
+    result = dict(verdict or {})
+    result.setdefault("winner", "tie")
+    result["session_id"] = runner.session_id
+    result["motion"] = motion
+    return result

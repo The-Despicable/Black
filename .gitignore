@@ -20,3 +20,7 @@ scripts/judge_report.json
 # Ablation runner temp artifacts
 arena/
 evaluations.zip
+
+# Generated session transcripts and local brain state
+transcripts/
+.raphael/

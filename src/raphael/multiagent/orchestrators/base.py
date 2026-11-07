@@ -16,9 +16,24 @@ from raphael.multiagent.llm.registry import Registry
 from raphael.multiagent.log import get_logger
 from raphael.multiagent.personas import get_persona_prompt
 from raphael.multiagent.transcript import write_transcript
-from raphael.multiagent.ui import agent_color, console, extract_json, info, stream_turn
+from raphael.multiagent.ui import agent_color, console, extract_json, info, is_json_mode, stream_turn
 from rich.panel import Panel
 from rich.text import Text
+
+
+def emit_event(payload: dict) -> None:
+    """Print one NDJSON progress event on stdout (``--json`` mode only).
+
+    Run screens (debate / chat / community / teams) subscribe to these to
+    render each agent turn live: one compact JSON object per line, flushed
+    immediately so the TUI's stdout tap sees it while the command runs.
+    Final results are separate top-level objects; everything that carries an
+    ``event`` key is progress, not a result."""
+    if not is_json_mode():
+        return
+    import json as _json
+
+    print(_json.dumps({"event": "turn", **payload}, ensure_ascii=False, default=str), flush=True)
 
 log = get_logger("session")
 
@@ -125,6 +140,19 @@ class SessionRunner:
             })
             text = "(turn failed)"
         latency = round((time.time() - t0) * 1000, 1)
+        emit_event({
+            "session_id": self.session_id,
+            "agent": agent,
+            "role": role,
+            "team": team,
+            "phase": phase,
+            "round": round_no,
+            "provider": provider_name,
+            "model": model,
+            "latency_ms": latency,
+            "ok": bool(ok_flag),
+            "text": text,
+        })
         self.db.execute(
             "INSERT INTO turns(session_id, seq, agent, team, role, phase, round, provider, model,"
             " content, latency_ms, ok, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",

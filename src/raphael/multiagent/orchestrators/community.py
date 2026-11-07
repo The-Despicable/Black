@@ -9,7 +9,7 @@ from raphael.multiagent.governance import KillSwitchEngaged
 from raphael.multiagent.llm.base import DEFAULT_SCORE, ChatMessage
 from raphael.multiagent.llm.registry import Registry
 from raphael.multiagent.personas import get_persona_prompt
-from raphael.multiagent.ui import console, info, summary_table, warn
+from raphael.multiagent.ui import console, info, is_json_mode, summary_table, warn
 from raphael.multiagent.orchestrators.base import SessionRunner
 
 COMMUNITY_PERSONAS = ["researcher", "analyst", "critic", "moderator"]
@@ -119,7 +119,9 @@ def run_community(
                 "open_questions": [],
                 "participant_scores": {},
             }
-        if not quiet:
+        if not quiet and not is_json_mode():
+            # pretty panel stays on stdout for humans only — json mode gets
+            # the structured result instead (printed by the CLI at the end)
             from rich.panel import Panel
             from rich.text import Text
 
@@ -145,23 +147,38 @@ def run_community(
         runner.add_to_section("MODERATOR", mb.model, "\n".join(body_md))
 
         pscores = synth.get("participant_scores") or {}
+        participants: List[dict] = []
         for t in turns:
             try:
                 score = float(pscores.get(t["agent"], DEFAULT_SCORE))
             except (TypeError, ValueError):
                 score = DEFAULT_SCORE
             runner.record_outcome(t["agent"], "agent", score, {"persona": t["persona"]})
+            participants.append({
+                "agent": t["agent"], "persona": t["persona"],
+                "model": registry.binding(t["persona"]).model,
+                "score": score, "turns": sum(1 for x in turns if x["agent"] == t["agent"]),
+            })
 
         if not quiet:
             rows = [
-                {"agent": t["agent"], "model": registry.binding(t["persona"]).model,
-                 "score": pscores.get(t["agent"], "—")}
-                for t in turns
+                {"agent": p["agent"], "model": p["model"], "score": p["score"]}
+                for p in participants
             ]
             summary_table("Round-table contributions", rows)
 
+        result = {
+            "kind": "community",
+            "session_id": runner.session_id,
+            "topic": topic,
+            "participants": participants,
+            "synthesis": str(synth.get("synthesis", "")),
+            "consensus": list(synth.get("consensus") or []),
+            "dissent": list(synth.get("dissent") or []),
+            "open_questions": list(synth.get("open_questions") or []),
+        }
         runner.finish(
-            verdict=synth,
+            verdict=result,
             extra_footer={"topic": topic, "participants": ", ".join(t["agent"] for t in turns), "session_id": runner.session_id},
         )
     except KillSwitchEngaged as exc:
@@ -174,4 +191,4 @@ def run_community(
     reflect_session(cfg, db, registry, runner.session_id, runner.kind, topic, turns, quiet=quiet)
     tick_evolution_counters(db)
     runner.close()
-    return synth
+    return result

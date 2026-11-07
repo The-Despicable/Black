@@ -29,6 +29,8 @@ class AppState:
     engine_path: Optional[str] = None
     engine_error: Optional[str] = None
     last_result: Optional[Any] = None  # engine.RunResult, avoids import cycle
+    brain_summary: Optional[str] = None  # one-line brain facts for the status strip
+                                         # (set by the brain screen from `brain status`)
 
     def __post_init__(self) -> None:
         if self.home is None:

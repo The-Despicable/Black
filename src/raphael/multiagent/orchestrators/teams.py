@@ -385,4 +385,21 @@ def run_teams(
     reflect_session(cfg, db, registry, runner.session_id, runner.kind, mission, all_turns, quiet=quiet)
     tick_evolution_counters(db)
     runner.close()
-    return verdict or {"integration": "report", "deliverable": integrated[:200]}
+    return {
+        "kind": "teams",
+        "session_id": runner.session_id,
+        "mission": mission,
+        "integration": integration_mode,
+        "teams": [
+            {
+                "team": r["team"].name,
+                "task": r["team"].task,
+                "members": [m["name"] for m in r["members"]],
+                "models": [m["model"] for m in r["members"]],
+                "result": r["result"],
+            }
+            for r in results
+        ],
+        "verdict": verdict,
+        "deliverable": integrated[:4000],
+    }

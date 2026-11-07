@@ -55,32 +55,47 @@ class RaphaelScreen(Screen):  # type: ignore[misc]
         pane: Optional[OutputPane] = None,
         on_done: Optional[Callable[[RunResult], None]] = None,
         label: str = "",
+        background: bool = False,
     ) -> None:
+        """Run a command through the in-process CLI engine.
+
+        ``background=True`` is the quiet path used by auto-refresh timers:
+        the command bar / output pane / result banner are left untouched so
+        periodic polls never flicker the shared chrome; ``on_done`` still
+        receives the parsed result and error notifications still fire.
+        """
         app = self.app
         state = app.state  # type: ignore[attr-defined]
         if state.busy:
-            app.notify(
-                "A command is already running — wait for it to finish.",
-                title="Busy",
-                severity="warning",
-            )
+            if not background:
+                app.notify(
+                    "A command is already running — wait for it to finish.",
+                    title="Busy",
+                    severity="warning",
+                )
             return
         full = state.augment(list(argv), json_mode=json_mode)
-        pane = pane if pane is not None else self.query_one("#output", OutputPane)
-        banner = self.query_one("#result", ResultBanner)
-        cmdbar = self.query_one("#cmdbar", CommandBar)
-        cmdbar.set_argv(full)
-        pane.reset_stream()
-        banner.set_running(full, label)
         state.busy = True
         engine = app.engine  # type: ignore[attr-defined]
+        pane_ref: Optional[OutputPane] = None
+        banner: Optional[ResultBanner] = None
+        if not background:
+            pane_ref = pane if pane is not None else self.query_one("#output", OutputPane)
+            banner = self.query_one("#result", ResultBanner)
+            cmdbar = self.query_one("#cmdbar", CommandBar)
+            cmdbar.set_argv(full)
+            pane_ref.reset_stream()
+            pane_ref.bind_engine(engine)
+            banner.set_running(full, label)
 
         def work() -> None:
             res = engine.run(full)
 
             def done() -> None:
-                pane.finalize(res)
-                banner.set_result(res)
+                if pane_ref is not None:
+                    pane_ref.finalize(res)
+                if banner is not None:
+                    banner.set_result(res)
                 state.busy = False
                 state.last_result = res
                 self._notify_result(app, res)
@@ -92,7 +107,6 @@ class RaphaelScreen(Screen):  # type: ignore[misc]
             except Exception:
                 pass
 
-        pane.bind_engine(engine)
         self.run_worker(work, thread=True, group="cmd", name=label or "command")
 
     @staticmethod
@@ -158,11 +172,17 @@ class HelpModal(ModalScreen):  # type: ignore[misc]
                 "\n".join(
                     [
                         "Dashboard      home, mode, engine, governance + quick actions",
-                        "Debate         motion vs rounds — PRO/CON/judge, live CLI stream",
-                        "Chat           one conversation, send/receive, memory-aware",
-                        "Community      topic, 2–6 agents — synthesis & scoring",
-                        "Teams          YAML team plan, mission, integration, parallel",
+                        "Debate         PRO/CON/judge — turns stream live, verdict panel",
+                        "               with winner badge, scores and reasoning",
+                        "Chat           one conversation, send/receive, memory-aware;",
+                        "               resume any past chat from history (full transcript)",
+                        "Community      2–6 specialists + moderator — turns stream live,",
+                        "               synthesis panel (consensus/dissent/open questions),",
+                        "               per-agent scores, past round-tables with transcripts",
+                        "Teams          YAML team plan — preview the roster before running,",
+                        "               live turns, integrator deliverable + team results",
                         "Brain          status · insights · search · log · sessions · evolve · danger",
+                        "               (inline tables · r refresh · x/j export csv/json)",
                         "Providers      list / test / models",
                         "Governance     status, kill-switch & audit tail (read-only)",
                         "Benchmark      run across providers, table + bars",

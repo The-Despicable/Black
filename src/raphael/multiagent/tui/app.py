@@ -55,7 +55,11 @@ BINDINGS = [
     Binding("f11", "screen('json')", "JSON console", priority=True),
     Binding("f12", "screen('chat')", "Chat", priority=True),
     Binding("question_mark", "help", "Help", priority=True),
-    Binding("escape", "screen('dashboard')", "Back", priority=True),
+    # NOTE: escape is intentionally NOT priority — priority bindings fire from
+    # the App down and would preempt every modal's Escape (ConfirmModal,
+    # HelpModal, brain detail dialogs). Non-priority, the key stops at the
+    # topmost modal screen; on regular screens it still bubbles to the app.
+    Binding("escape", "screen('dashboard')", "Back"),
     Binding("q", "quit", "Quit"),
     Binding("ctrl+q", "quit", "Quit", priority=True),
 ]

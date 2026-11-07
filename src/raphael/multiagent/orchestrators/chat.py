@@ -151,4 +151,6 @@ def run_chat(
         "provider": binding.provider,
         "model": binding.model,
         "mode": cfg.mode,
+        "insights_used": list(used_ids),
+        "turns": seq + 1,  # user turn + this assistant reply
     }

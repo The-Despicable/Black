@@ -16,6 +16,7 @@ from raphael.multiagent import __version__
 from raphael.multiagent.brain.db import BrainDB
 from raphael.multiagent.brain import memory as mem
 from raphael.multiagent.brain.evolver import (
+    STRATEGY_WHITELIST,
     collect_stats,
     evaluate_pending,
     rollback_evolution,
@@ -138,6 +139,31 @@ def _registry(cfg):
         host_only_live=True,
     )
 
+
+def _sha12(text: str) -> str:
+    """Short stable digest used for genome/prompt fingerprints."""
+    import hashlib
+
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+
+
+def _human_bytes(n: float) -> str:
+    for unit in ("B", "KiB", "MiB", "GiB"):
+        if abs(n) < 1024.0 or unit == "GiB":
+            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
+        n /= 1024.0
+    return f"{n:.1f} GiB"
+
+
+def _genome_hash(db: BrainDB) -> str:
+    """Digest over the active persona genome (role:version:prompt_sha)."""
+    parts = sorted(
+        f"{r['role']}:{r['version']}:{_sha12(r['prompt'][:200])}"
+        for r in db.query("SELECT role, version, prompt FROM personas WHERE active=1")
+    )
+    return _sha12("|".join(parts)) if parts else "—"
+
+
 # ------------------------------------------------------------------- init
 @app.command()
 def init(
@@ -220,13 +246,15 @@ def community(
     cfg = _resolve_mode(_cfg(), live, mock)
     with db_session(cfg) as db:
         try:
-            run_community(cfg, db, _registry(cfg), topic, n_agents=agents, rounds=rounds, quiet=quiet, stream=stream)
+            result = run_community(cfg, db, _registry(cfg), topic, n_agents=agents, rounds=rounds, quiet=quiet, stream=stream)
         except KillSwitchEngaged as exc:
             error(f"governance: {exc}")
             raise typer.Exit(code=EXIT_KILL_SWITCH)
         except GovernanceConfigError as exc:
             error(f"governance: {exc}")
             raise typer.Exit(code=EXIT_GOVERNANCE_CONFIG)
+    if result and is_json_mode():
+        print(json.dumps(result, ensure_ascii=False, default=str))
 
 
 # ------------------------------------------------------------------- chat
@@ -314,7 +342,7 @@ def teams(
     cfg = _resolve_mode(_cfg(), live, mock)
     with db_session(cfg) as db:
         try:
-            run_teams(
+            result = run_teams(
                 cfg, db, _registry(cfg), config, mission=mission,
                 integration_mode=integration, parallel=parallel, quiet=quiet, stream=stream,
             )
@@ -327,6 +355,8 @@ def teams(
         except ValueError as exc:
             error(str(exc))
             raise typer.Exit(code=1)
+    if result and is_json_mode():
+        print(json.dumps(result, ensure_ascii=False, default=str))
 
 
 # ------------------------------------------------------------------ brain
@@ -338,23 +368,41 @@ def brain_status():
         stats = collect_stats(db)
         rows = db.one(
             "SELECT (SELECT COUNT(*) FROM sessions) AS sessions,"
+            " (SELECT COUNT(*) FROM sessions WHERE finished_at IS NULL) AS sessions_active,"
             " (SELECT COUNT(*) FROM turns) AS turns,"
             " (SELECT COUNT(*) FROM insights WHERE active=1) AS insights_active,"
             " (SELECT COUNT(*) FROM insights) AS insights_total,"
             " (SELECT COUNT(*) FROM evolutions) AS evolutions,"
-            " (SELECT COUNT(*) FROM evolutions WHERE status='active') AS evo_active"
+            " (SELECT COUNT(*) FROM evolutions WHERE status='active') AS evo_active,"
+            " (SELECT COUNT(*) FROM outcomes) AS outcomes,"
+            " (SELECT MAX(created_at) FROM evolutions) AS last_evo_at"
         )
+        try:
+            db_size = db.path.stat().st_size
+        except OSError:
+            db_size = 0
+        try:
+            wal = db.one("PRAGMA journal_mode")["journal_mode"]
+        except (TypeError, IndexError, sqlite3.Error):
+            wal = "—"
         summary_table(
             "Brain status",
             [
                 {"metric": "home", "value": str(cfg.home)},
                 {"metric": "mode", "value": cfg.mode},
+                {"metric": "db path", "value": str(db.path)},
+                {"metric": "db size", "value": _human_bytes(db_size)},
+                {"metric": "wal", "value": wal},
                 {"metric": "sessions", "value": rows["sessions"]},
+                {"metric": "active sessions", "value": rows["sessions_active"]},
                 {"metric": "journal turns", "value": rows["turns"]},
                 {"metric": "insights (active/total)", "value": f"{rows['insights_active']}/{rows['insights_total']}"},
                 {"metric": "avg insight confidence", "value": stats["insights"]["avg_confidence"]},
                 {"metric": "insights confirmed/contradicted", "value": f"{stats['insights']['confirmed']}/{stats['insights']['contradicted']}"},
+                {"metric": "outcomes", "value": rows["outcomes"]},
                 {"metric": "evolutions (total/active)", "value": f"{rows['evolutions']}/{rows['evo_active']}"},
+                {"metric": "last evolution", "value": rows["last_evo_at"] or "—"},
+                {"metric": "genome hash", "value": _genome_hash(db)},
             ],
         )
         pers = db.query(
@@ -387,20 +435,25 @@ def brain_insights(
     with db_session(cfg) as db:
         where = "WHERE active=1" if active_only else ""
         rows = db.query(
-            f"SELECT id, text, confidence, times_used, times_confirmed, times_contradicted,"
-            f" active FROM insights {where} ORDER BY confidence DESC LIMIT ?",
+            f"SELECT id, text, confidence, weight, times_used, times_confirmed, times_contradicted,"
+            f" active, created_at FROM insights {where} ORDER BY confidence DESC LIMIT ?",
             (limit,),
         )
         summary_table(
             "Insights",
             [
                 {
-                    "id": r["id"], "conf": f"{r['confidence']:.2f}", "used": r["times_used"],
+                    "id": r["id"],
+                    "conf": round(float(r["confidence"]), 2),
+                    "weight": round(float(r["weight"]), 2),
+                    "used": r["times_used"],
                     "✓/✗": f"{r['times_confirmed']}/{r['times_contradicted']}",
+                    "active": bool(r["active"]),
+                    "created": (r["created_at"] or "")[:16],
                     "insight": r["text"][:90],
                 }
                 for r in rows
-            ] or [{"id": "—", "conf": "—", "used": "—", "✓/✗": "—", "insight": "(none yet)"}],
+            ] or [{"id": "—", "conf": "—", "weight": "—", "used": "—", "✓/✗": "—", "active": "—", "created": "—", "insight": "(none yet)"}],
         )
 
 
@@ -416,7 +469,7 @@ def brain_search(
         summary_table(
             f"Search: '{query}'",
             [
-                {"id": i, "conf": f"{c:.2f}", "sim": f"{s:.2f}", "insight": t[:90]}
+                {"id": i, "conf": round(float(c), 2), "sim": round(float(s), 3), "insight": t[:90]}
                 for i, t, c, s in hits
             ] or [{"id": "—", "conf": "—", "sim": "—", "insight": "(no matches)"}],
         )
@@ -427,6 +480,7 @@ def brain_log(
     last: int = typer.Option(10, "--last", "-n", min=1, max=1000),
     offset: int = typer.Option(0, "--offset", min=0, help="skip N most recent turns (pagination)"),
     session: Optional[str] = typer.Option(None, "--session"),
+    full: bool = typer.Option(False, "--full", help="JSON mode: include the untruncated turn content"),
 ):
     """Browse the thinking journal (raw turns)."""
     cfg = _cfg()
@@ -443,16 +497,25 @@ def brain_log(
                 " ORDER BY t.id DESC LIMIT ? OFFSET ?",
                 (last, offset),
             )
+        # JSON mode keeps full session ids (needed to drill down with --session).
+        sid = (lambda s: s) if is_json_mode() else (lambda s: s[:8])
+        out_rows = []
+        for r in rows:
+            row = {
+                "at": (r["created_at"] or "")[:19],
+                "session": sid(r["session_id"]),
+                "agent": r["agent"],
+                "role": r["role"] or "—",
+                "phase": r["phase"] or "—",
+                "excerpt": (r["content"] or "")[:80].replace("\n", " "),
+            }
+            if full and is_json_mode():
+                # untruncated content powers transcript viewers (chat resume)
+                row["content"] = r["content"] or ""
+            out_rows.append(row)
         summary_table(
             f"Thinking journal (latest first{f', offset {offset}' if offset else ''})",
-            [
-                {
-                    "session": r["session_id"][:8], "agent": r["agent"],
-                    "role": r["role"] or "—", "phase": r["phase"] or "—",
-                    "excerpt": (r["content"] or "")[:60].replace("\n", " "),
-                }
-                for r in rows
-            ] or [{"session": "—", "agent": "(empty)", "role": "", "phase": "", "excerpt": ""}],
+            out_rows or [{"at": "—", "session": "—", "agent": "(empty)", "role": "", "phase": "", "excerpt": ""}],
         )
 
 
@@ -468,7 +531,7 @@ def brain_sessions(
         # Python parse only if some legacy row holds malformed JSON
         try:
             rows = db.query(
-                "SELECT id, kind, topic, mode, started_at,"
+                "SELECT id, kind, topic, mode, started_at, finished_at,"
                 " json_extract(verdict_json, '$.winner') AS winner,"
                 " json_extract(verdict_json, '$.synthesis') AS synthesis"
                 " FROM sessions ORDER BY started_at DESC LIMIT ? OFFSET ?",
@@ -481,7 +544,7 @@ def brain_sessions(
         except sqlite3.OperationalError as exc:
             log.warning("json_extract failed (%s); using tolerant parse", exc)
             rows = db.query(
-                "SELECT id, kind, topic, mode, started_at, verdict_json"
+                "SELECT id, kind, topic, mode, started_at, finished_at, verdict_json"
                 " FROM sessions ORDER BY started_at DESC LIMIT ? OFFSET ?",
                 (limit, offset),
             )
@@ -499,10 +562,85 @@ def brain_sessions(
 
 
 def _session_row(r: sqlite3.Row, verdict: str) -> dict:
+    # JSON mode keeps full ids/timestamps so the TUI can drill down; the
+    # human table stays compact (date-only stamps keep the topic readable
+    # at an 80-column terminal).
+    full = is_json_mode()
+    started = (r["started_at"] or "")[:19] if full else (r["started_at"] or "")[:10]
+    finished = (r["finished_at"] or "")[:19] if full else (r["finished_at"] or "")[:10]
     return {
-        "id": r["id"][:8], "kind": r["kind"], "mode": r["mode"],
-        "topic": r["topic"][:40], "verdict": verdict, "at": (r["started_at"] or "")[:16],
+        "id": r["id"] if full else r["id"][:8],
+        "kind": r["kind"], "mode": r["mode"],
+        "topic": r["topic"][:40], "verdict": verdict,
+        "started": started, "finished": finished or "—",
     }
+
+
+@brain_app.command("evolutions")
+def brain_evolutions(
+    status: Optional[str] = typer.Option(None, "--status", help="filter: candidate|active|kept|reverted"),
+    limit: int = typer.Option(20, min=1, max=500),
+):
+    """Evolution history: proposed edits, selection status, progress."""
+    cfg = _cfg()
+    with db_session(cfg) as db:
+        where, params = "", []
+        if status:
+            where, params = "WHERE status=?", [status]
+        rows = db.query(
+            f"SELECT id, kind, edits_json, reason, status, eval_after, sessions_seen,"
+            f" created_at, decided_at FROM evolutions {where} ORDER BY id DESC LIMIT ?",
+            (*params, limit),
+        )
+        out = []
+        for r in rows:
+            try:
+                edits = json.loads(r["edits_json"] or "[]")
+            except (json.JSONDecodeError, TypeError):
+                edits = []
+            row = {
+                "id": r["id"], "kind": r["kind"], "edits": len(edits),
+                "status": r["status"], "reason": (r["reason"] or "")[:60],
+                "seen": r["sessions_seen"], "eval_after": r["eval_after"],
+                "created": (r["created_at"] or "")[:16],
+                "decided": (r["decided_at"] or "—")[:16],
+            }
+            if is_json_mode():
+                # full edit payloads power the TUI diff/detail viewers
+                row["edit_list"] = edits
+            out.append(row)
+        summary_table("Evolutions", out or [{"id": "(none)"}])
+
+
+@brain_app.command("genome")
+def brain_genome():
+    """Active persona genome and whitelisted strategy keys."""
+    cfg = _cfg()
+    with db_session(cfg) as db:
+        pers = db.query(
+            "SELECT role, version, note, prompt FROM personas WHERE active=1 ORDER BY role"
+        )
+        summary_table(
+            "Genome (active personas)",
+            [
+                {
+                    "persona": r["role"], "version": r["version"],
+                    "origin": (r["note"] or "seed")[:20],
+                    "prompt_sha": _sha12(r["prompt"][:200]),
+                }
+                for r in pers
+            ] or [{"persona": "(none)"}],
+        )
+        keys = tuple(sorted(STRATEGY_WHITELIST))
+        strat = db.query(
+            f"SELECT key, value FROM meta WHERE key IN ({','.join('?' * len(keys))}) ORDER BY key",
+            keys,
+        )
+        summary_table(
+            "Strategy keys",
+            [{"key": r["key"], "value": r["value"]} for r in strat]
+            or [{"key": "(all defaults)", "value": "—"}],
+        )
 
 
 @brain_app.command("rollback")
