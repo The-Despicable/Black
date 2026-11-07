@@ -17,9 +17,10 @@ Verifies the 10 required mechanisms per SENTINEL acceptance criteria:
 """
 
 import sys
+from pathlib import Path
 import unittest
 import uuid
-sys.path.insert(0, '/home/yaser/raphael-2.0')
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from orchestrator.brain.action import (
     Planner, ActionRegistry,

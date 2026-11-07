@@ -18,10 +18,11 @@ Success criteria (per D10_LLM_EVIDENCE_WINDOW_REPAIR_SPEC.json):
 """
 
 import sys
+from pathlib import Path
 import json
 import time
 import traceback
-sys.path.insert(0, '/home/yaser/raphael-2.0')
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from arena.d6_manifest import (
     D6_SCENARIO_FACTORIES, D6_SCENARIO_EVALUATORS,
@@ -252,7 +253,7 @@ def run_episode(template_key, seed, architecture, llm_config):
 
 
 def main():
-    results_file = "/home/yaser/raphael-2.0/arena/results/d10_regression_results.json"
+    results_file = str(Path(__file__).resolve().parents[1] / 'arena' / 'results/d10_regression_results.json')
 
     llm_config = make_llm_config()
 

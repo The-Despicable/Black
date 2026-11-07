@@ -19,7 +19,7 @@ import json
 import time
 import traceback
 from pathlib import Path
-sys.path.insert(0, '/home/yaser/raphael-2.0')
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from arena.d6_manifest import (
     D6_SCENARIO_FACTORIES, D6_SCENARIO_EVALUATORS,
@@ -37,7 +37,7 @@ _GLOBAL_EVALUATORS.update(D6_SCENARIO_EVALUATORS)
 ARCHITECTURES = ["FULL_RAPHAEL", "NO_LLM", "LLM_ONLY"]
 TEMPLATES = ["T3_FALSIFICATION_SENSITIVE", "T4_WORLD_MODEL_IDENTITY", "T6_SEMANTIC_LLM"]
 
-OUTPUT_DIR = Path("/home/yaser/raphael-2.0/arena/results/d7_r1_gemma_retest")
+OUTPUT_DIR = Path(__file__).resolve().parents[1] / 'arena' / 'results/d7_r1_gemma_retest'
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 

@@ -12,9 +12,10 @@ Success criteria (per D7_PLANNER_RECEIPT_REPAIR_SPEC.json):
 
 import json
 import sys
+from pathlib import Path
 import time
 import traceback
-sys.path.insert(0, '/home/yaser/raphael-2.0')
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from arena.d6_manifest import (
     D6_SCENARIO_FACTORIES, D6_SCENARIO_EVALUATORS,

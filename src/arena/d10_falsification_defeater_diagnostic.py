@@ -12,10 +12,11 @@ and Defeater pipelines to answer SENTINEL's four questions:
 """
 
 import sys
+from pathlib import Path
 import json
 import time
 import traceback
-sys.path.insert(0, '/home/yaser/raphael-2.0')
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from arena.d6_manifest import (
     D6_SCENARIO_FACTORIES, D6_SCENARIO_EVALUATORS,
@@ -456,7 +457,7 @@ def main():
         print("Mixed status.")
 
     # Save report
-    report_path = "/home/yaser/raphael-2.0/arena/results/d10_falsification_defeater_diagnostic.json"
+    report_path = str(Path(__file__).resolve().parents[1] / 'arena' / 'results/d10_falsification_defeater_diagnostic.json')
     output = {
         "spec": "D10_FALSIFICATION_DEFEATER_DIAGNOSTIC",
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),

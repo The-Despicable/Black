@@ -18,11 +18,12 @@ Stop conditions:
 """
 
 import sys
+from pathlib import Path
 import json
 import time
 import traceback
 import os
-sys.path.insert(0, '/home/yaser/raphael-2.0')
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 # Suppress D14-DEBUG flood
 os.environ['D14_DEBUG'] = '0'
@@ -64,9 +65,9 @@ HOLDOUT_SEEDS = {
 }
 
 # Output files
-RESULTS_FILE = "/home/yaser/raphael-2.0/arena/d6c_results/d16_holdout_results.jsonl"
-PROGRESS_FILE = "/home/yaser/raphael-2.0/arena/d6c_results/d16_holdout_progress.json"
-SCORECARD_FILE = "/home/yaser/raphael-2.0/arena/manifests/D16_HOLDOUT_SCORECARD.json"
+RESULTS_FILE = str(Path(__file__).resolve().parents[1] / 'arena' / 'd6c_results/d16_holdout_results.jsonl')
+PROGRESS_FILE = str(Path(__file__).resolve().parents[1] / 'arena' / 'd6c_results/d16_holdout_progress.json')
+SCORECARD_FILE = str(Path(__file__).resolve().parents[1] / 'arena' / 'manifests/D16_HOLDOUT_SCORECARD.json')
 
 LLM_CONFIG = LLMProviderConfig(
     model_id="bjoernb/gemma4-31b-think:latest",

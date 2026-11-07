@@ -12,9 +12,10 @@ Traces a single FULL_RAPHAEL episode (T3 seed 952316315) and captures:
 """
 
 import sys
+from pathlib import Path
 import json
 import time
-sys.path.insert(0, '/home/yaser/raphael-2.0')
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from arena.d6_manifest import D6_SCENARIO_FACTORIES, SCENARIO_TEMPLATES
 from arena.ablation import ABLATION_PRESETS
