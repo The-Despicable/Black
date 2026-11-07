@@ -420,7 +420,7 @@ int main() {{
 # ══════════════════════════════════════════════════════════════════════════════════
 
 class NativeC2Server:
-    def __init__(self, host: str = "0.0.0.0", port: int = 443, 
+    def __init__(self, host: str = "127.0.0.1", port: int = 443, 
                  cert_path: str = None, key_path: str = None):
         self.host = host
         self.port = port
@@ -887,7 +887,7 @@ Examples:
     p.add_argument("--feature", help="Comma-separated features")
     p.set_defaults(func=cmd_build)
     p = subparsers.add_parser("c2", help="Start C2 server")
-    p.add_argument("--host", default="0.0.0.0")
+    p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=443)
     p.add_argument("--cert", required=True, help="TLS certificate")
     p.add_argument("--key", required=True, help="TLS private key")

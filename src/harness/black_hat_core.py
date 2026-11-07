@@ -979,34 +979,54 @@ class DatabaseExploiter:
 
 
 class AntiForensicCleanup:
-    """Secure delete, timestomp, free space wipe — all outcomes verified."""
+    """Secure delete, timestomp, free space wipe — with verified outcomes.
+
+    Every operation reports only what it actually verified: a path is
+    "deleted" only if it is confirmed gone afterwards; a missing
+    reference file is a hard failure; unimplemented platform wipes are
+    reported as not_implemented rather than faking success.
+    """
 
     def __init__(self, config: BlackHatConfig):
         self.config = config
         self.stealth = Stealth()
 
-    # -- public, verified surface ------------------------------------------
+    # ------------------------------------------------------------- public API
     async def secure_delete_artifacts(
         self, paths: List[str], passes: int = 3
     ) -> Dict[str, Any]:
-        """Overwrite then unlink each path; verify the file is gone.
+        """Securely delete files with random-overwrite passes.
 
-        A path only appears in ``deleted`` when the unlink was confirmed by
-        a subsequent existence check. Everything else lands in ``failed``
-        with the reason — nonexistent files included.
+        Per file: random overwrite (passes x) -> fsync -> truncate ->
+        fsync -> unlink -> existence check. A file only lands in
+        "deleted" if it is verifiably gone afterwards; nonexistent or
+        invalid paths land in "failed" and are never touched.
         """
         deleted: List[str] = []
         failed: List[Dict[str, str]] = []
+
         for path in paths:
-            ok, err = await self._secure_delete(path, passes=passes)
-            if ok:
-                deleted.append(path)
-            else:
-                failed.append({"path": path, "error": err or "unknown error"})
+            try:
+                if not self._validate_path(path):
+                    failed.append({
+                        "path": path,
+                        "error": "path does not exist or is not a regular file",
+                    })
+                    continue
+                await asyncio.to_thread(self._secure_delete_sync, path, passes)
+                if os.path.lexists(path):
+                    failed.append({
+                        "path": path,
+                        "error": "still exists after delete (unverified)",
+                    })
+                else:
+                    deleted.append(path)
+            except Exception as exc:
+                failed.append({"path": path, "error": str(exc)})
 
         if not paths:
             status = "skipped"
-        elif not failed:
+        elif deleted and not failed:
             status = "success"
         elif deleted:
             status = "partial"
@@ -1020,67 +1040,77 @@ class AntiForensicCleanup:
         }
 
     async def timestomp_files(
-        self, reference: str, targets: Optional[List[str]] = None
+        self, reference: str, paths: Optional[List[str]] = None
     ) -> Dict[str, Any]:
-        """Copy the reference file's MAC times onto every target.
+        """Copy the reference file's timestamps onto each path (verified).
 
-        A missing reference is a hard failure — there is nothing to copy
-        from, and pretending otherwise would fabricate an artifact.
+        A missing reference file is a hard failure: timestomping against
+        an unknown time would silently produce wrong timestamps.
         """
+        timestomped: List[str] = []
+        failed: List[Dict[str, str]] = []
+
         if not reference or not os.path.isfile(reference):
             return {
                 "status": "failed",
-                "error": f"reference file not found: {reference}",
-                "reference": reference,
-                "timestomped": [],
-                "failed": [{"path": reference, "error": "reference not found"}],
+                "error": f"reference '{reference}' does not exist",
+                "timestomped": timestomped,
+                "failed": failed,
             }
-        targets = targets or []
+
+        targets = paths or []
         if not targets:
             return {
                 "status": "skipped",
-                "reason": "no targets supplied",
-                "reference": reference,
-                "timestomped": [],
-                "failed": [],
+                "reason": "no paths given to timestomp",
+                "timestomped": timestomped,
+                "failed": failed,
             }
 
-        timestomped: List[str] = []
-        failed: List[Dict[str, str]] = []
-        for target in targets:
-            ok, err = await self._timestomp(target, reference)
-            if ok:
-                timestomped.append(target)
-            else:
-                failed.append({"path": target, "error": err or "unknown error"})
+        ref_stat = os.stat(reference)
+        ref_times = (ref_stat.st_atime, ref_stat.st_mtime)
+        for path in targets:
+            try:
+                if not self._validate_path(path):
+                    failed.append({
+                        "path": path,
+                        "error": "path does not exist or is not a regular file",
+                    })
+                    continue
+                os.utime(path, ns=(ref_stat.st_atime_ns, ref_stat.st_mtime_ns))
+                now = os.stat(path)
+                if (now.st_atime_ns, now.st_mtime_ns) == \
+                        (ref_stat.st_atime_ns, ref_stat.st_mtime_ns):
+                    timestomped.append(path)
+                else:
+                    failed.append({
+                        "path": path,
+                        "error": "timestamps did not match reference after utime",
+                    })
+            except Exception as exc:
+                failed.append({"path": path, "error": str(exc)})
 
-        status = "success" if not failed else ("partial" if timestomped else "failed")
+        if timestomped and not failed:
+            status = "success"
+        elif timestomped:
+            status = "partial"
+        else:
+            status = "failed"
         return {
             "status": status,
-            "reference": reference,
             "timestomped": timestomped,
             "failed": failed,
+            "reference": reference,
+            "reference_times": ref_times,
         }
 
     async def wipe_free_space(self) -> Dict[str, Any]:
-        """Wipe unallocated space — only where a verified method exists.
-
-        Linux has no verified free-space wipe implemented here, so the
-        result is ``not_implemented`` rather than a fabricated success.
-        """
+        """Wipe volume free space. Honest per-platform result."""
         if self.stealth.IS_WINDOWS:
-            ok = await self._wipe_free_space_windows()
-            return {
-                "status": "success" if ok else "failed",
-                "platform": "windows",
-            }
-        return {
-            "status": "not_implemented",
-            "platform": "linux" if self.stealth.IS_LINUX else sys.platform,
-            "reason": "no verified free-space wipe implemented for this platform",
-        }
+            return await self._wipe_free_space_windows()
+        return await self._wipe_free_space_linux()
 
-    # -- orchestration ------------------------------------------------------
+    # ---------------------------------------------------------- internal API
     async def cleanup_operation(self, paths: List[str]) -> Dict[str, Any]:
         """Perform anti-forensic cleanup on paths.
 
@@ -1101,104 +1131,101 @@ class AntiForensicCleanup:
 
             try:
                 if self.config.enable_secure_delete:
-                    ok, err = await self._secure_delete(path)
-                    if ok:
+                    await asyncio.to_thread(
+                        self._secure_delete_sync, path, 3
+                    )
+                    if not os.path.lexists(path):
                         results["secure_deleted"].append(path)
                     else:
-                        results["errors"].append({"path": path, "error": err})
+                        results["errors"].append({
+                            "path": path,
+                            "error": "still exists after delete (unverified)",
+                        })
 
-                if self.config.enable_timestomp:
-                    ok, err = await self._timestomp(path)
-                    if ok:
-                        results["timestomped"].append(path)
-                    else:
-                        results["errors"].append({"path": path, "error": err})
+                if self.config.enable_timestomp and os.path.lexists(path):
+                    # No reference timestamp available in this call path:
+                    # report the skip honestly instead of stamping a guess.
+                    results["errors"].append({
+                        "path": path,
+                        "error": "timestomp requires a reference file "
+                                 "(use timestomp_files)",
+                    })
             except Exception as e:
                 results["errors"].append({"path": path, "error": str(e)})
 
-        if self.stealth.IS_WINDOWS:
-            results["free_space_wiped"] = await self._wipe_free_space_windows()
-        else:
-            results["free_space_wiped"] = await self._wipe_free_space_linux()
+        wipe = await self.wipe_free_space()
+        results["free_space_wiped"] = wipe.get("status") == "success"
+        results["free_space_wipe_detail"] = wipe
 
         return results
 
-    # -- primitives ---------------------------------------------------------
-    async def _secure_delete(
-        self, path: str, passes: int = 3
-    ) -> tuple[bool, Optional[str]]:
-        """Overwrite with random data, unlink, verify. Returns (ok, error)."""
+    @staticmethod
+    def _secure_delete_sync(path: str, passes: int = 3) -> None:
+        """Blocking core: random overwrite -> fsync -> truncate -> unlink.
+
+        The overwrite is chunked so peak memory stays bounded (64 KiB)
+        regardless of artifact size; a single ``os.urandom(size)`` would
+        allocate the whole file in RAM.
+        """
+        size = os.path.getsize(path)
+        chunk = 64 * 1024
+        with open(path, "rb+", buffering=0) as fh:
+            for _ in range(max(1, passes)):
+                fh.seek(0)
+                remaining = size
+                while remaining > 0:
+                    block = os.urandom(min(chunk, remaining))
+                    fh.write(block)
+                    remaining -= len(block)
+                fh.flush()
+                os.fsync(fh.fileno())
+            fh.truncate(0)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.unlink(path)
+
+    async def _wipe_free_space_windows(self) -> Dict[str, Any]:
+        """Wipe free space on Windows via cipher /w (verified exit code)."""
         try:
-            if not os.path.exists(path):
-                return False, "file does not exist"
-            if os.path.islink(path) or not os.path.isfile(path):
-                return False, "not a regular file"
-
-            passes = max(1, int(passes))
-            size = os.path.getsize(path)
-            if size:
-                with open(path, "r+b", buffering=0) as fh:
-                    chunk = 64 * 1024
-                    for _ in range(passes):
-                        fh.seek(0)
-                        remaining = size
-                        while remaining > 0:
-                            block = secrets.token_bytes(min(chunk, remaining))
-                            fh.write(block)
-                            remaining -= len(block)
-                        fh.flush()
-                        os.fsync(fh.fileno())
-                    fh.truncate(0)
-                    fh.flush()
-                    os.fsync(fh.fileno())
-
-            os.unlink(path)
-            if os.path.exists(path):
-                return False, "unlink did not remove the file"
-            return True, None
-        except Exception as exc:
-            return False, str(exc)
-
-    async def _timestomp(
-        self, path: str, reference: Optional[str] = None
-    ) -> tuple[bool, Optional[str]]:
-        """Apply reference (or epoch) timestamps to a file. Returns (ok, error)."""
-        try:
-            if not os.path.exists(path):
-                return False, "target does not exist"
-            if reference is not None:
-                if not os.path.exists(reference):
-                    return False, f"reference does not exist: {reference}"
-                st = os.stat(reference)
-                os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns))
-            else:
-                # No reference: normalize to a neutral, fixed timestamp.
-                os.utime(path, (0, 0))
-            return True, None
-        except Exception as exc:
-            return False, str(exc)
-
-    async def _wipe_free_space_windows(self) -> bool:
-        """Windows free-space wipe via cipher /w. Unverified by design."""
-        try:
-            drive = os.path.splitdrive(os.path.abspath(tempfile.gettempdir()))[0] or "C:"
-            proc = subprocess.run(
-                ["cipher", "/w:" + drive], capture_output=True, timeout=self.config.operation_timeout
+            r = subprocess.run(
+                ["cipher", "/w:" + os.environ.get("SYSTEMDRIVE", "C:") + "\\"],
+                capture_output=True, timeout=600,
             )
-            return proc.returncode == 0
-        except Exception:
-            return False
+            return {
+                "status": "success" if r.returncode == 0 else "failed",
+                "platform": "windows",
+                "detail": f"cipher exited {r.returncode}",
+            }
+        except FileNotFoundError:
+            return {
+                "status": "not_implemented",
+                "platform": "windows",
+                "detail": "cipher.exe not available",
+            }
+        except Exception as exc:
+            return {"status": "failed", "platform": "windows",
+                    "detail": str(exc)}
 
-    async def _wipe_free_space_linux(self) -> bool:
-        """Linux free-space wipe is not implemented; report honestly."""
-        return False
+    async def _wipe_free_space_linux(self) -> Dict[str, Any]:
+        """No verified userspace free-space wipe on Linux: report honestly.
+
+        Reliable wiping needs raw-device access as root (e.g. a dedicated
+        tool against the block device); faking success here would be an
+        unverified claim.
+        """
+        return {
+            "status": "not_implemented",
+            "platform": "linux",
+            "detail": "no verified free-space wipe primitive on Linux; "
+                      "use a root raw-device wiper if this is required",
+        }
 
     def _validate_path(self, path: str) -> bool:
         """Validate path to prevent path traversal attacks."""
         if not path:
             return False
         try:
-            Path(path).resolve()
+            resolved = Path(path).resolve()
         except Exception:
             return False
 

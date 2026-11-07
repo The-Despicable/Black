@@ -73,7 +73,7 @@ class SecureC2Server:
 
     def __init__(
         self,
-        host: str = '0.0.0.0',
+        host: str = '127.0.0.1',
         port: int = 443,
         cert_path: Optional[str] = None,
         key_path: Optional[str] = None,
@@ -150,11 +150,11 @@ class SecureC2Server:
         context.minimum_version = ssl.TLSVersion.TLSv1_3
 
         self._running = True
-        logger.info(f"Starting Secure C2 Server on 0.0.0.0:{self.port} with mTLS")
+        logger.info(f"Starting Secure C2 Server on {self.host}:{self.port} with mTLS")
 
         server = await asyncio.start_server(
             self._handle_connection,
-            '0.0.0.0',
+            self.host,
             self.port,
             ssl=ssl_context,
         )
