@@ -16,7 +16,23 @@ import raphael.multiagent.llm.openai_compat as openai_compat
 from raphael.multiagent.brain.db import BrainDB
 from raphael.multiagent.cli import app
 
-runner = CliRunner()
+
+def _separate_stream_runner() -> CliRunner:
+    """CliRunner with stderr kept out of Result.stdout.
+
+    The --json surface promises pure NDJSON on stdout with human
+    diagnostics (banner, phase rules) on stderr. click < 8.2 mixes
+    stderr into Result.stdout by default (mix_stderr=True); click >= 8.2
+    removed the flag and always keeps the streams separate. Construct the
+    runner accordingly so stdout assertions test the real contract.
+    """
+    try:
+        return CliRunner(mix_stderr=False)  # click < 8.2
+    except TypeError:  # click >= 8.2: streams are separate by default
+        return CliRunner()
+
+
+runner = _separate_stream_runner()
 
 LIVE_MODELS = [
     "z-ai/glm-5.2",
