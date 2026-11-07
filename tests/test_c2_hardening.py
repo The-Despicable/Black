@@ -42,7 +42,7 @@ def _hardcoded_repo_path(source: str) -> bool:
 # ------------------------------------------------------------------ crypto
 class TestAEADChannel:
     def test_roundtrip_bytes_and_str(self):
-        ch = AEADChannel("shared-secret")
+        ch = AEADChannel("test-channel-passphrase")
         assert ch.decrypt(ch.encrypt(b"payload")) == b"payload"
         assert ch.decrypt(ch.encrypt("text")) == b"text"
 
@@ -54,7 +54,7 @@ class TestAEADChannel:
 
     def test_tamper_detection(self):
         ch = AEADChannel("k")
-        blob = bytearray(ch.encrypt(b"secret"))
+        blob = bytearray(ch.encrypt(b"fixed"))
         blob[-1] ^= 0xFF
         with pytest.raises(Exception):
             ch.decrypt(bytes(blob))
