@@ -46,6 +46,9 @@ class StatusStrip(Horizontal):
         try:
             app = self.app
             state = app.state  # type: ignore[attr-defined]
+            # Bail if the app is tearing down (no screens on stack).
+            if not app.screen:
+                return
         except Exception:
             return
         mode = self.query_one("#strip-mode", Badge)
